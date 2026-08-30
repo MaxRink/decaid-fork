@@ -14,6 +14,10 @@ class ScaleController {
 
   StreamSubscription<ConnectionState>? _scaleConnection;
   StreamSubscription<ScaleSnapshot>? _scaleSnapshot;
+  StreamSubscription<ScaleButton>? _scaleButtons;
+
+  final StreamController<ScaleButton> _buttonController =
+      StreamController.broadcast();
 
   String? _lastConnectedDeviceId;
   String? get lastConnectedDeviceId => _lastConnectedDeviceId;
@@ -32,11 +36,16 @@ class ScaleController {
     _scaleSnapshot = null;
     _scaleConnection?.cancel();
     _scaleConnection = null;
+    _scaleButtons?.cancel();
+    _scaleButtons = null;
     if (!_connectionController.isClosed) {
       _connectionController.close();
     }
     if (!_weightSnapshotController.isClosed) {
       _weightSnapshotController.close();
+    }
+    if (!_buttonController.isClosed) {
+      _buttonController.close();
     }
     _snapshotSessionActive = false;
     _currentWeightSnapshot = null;
@@ -84,6 +93,7 @@ class ScaleController {
     if (scale is ScaleSnapshotHandoff) {
       (scale as ScaleSnapshotHandoff).activateSnapshots();
     }
+    _subscribeToButtons(scale);
   }
 
   Future<void> adoptScale(Scale scale) async {
@@ -119,6 +129,23 @@ class ScaleController {
     if (scale is ScaleSnapshotHandoff) {
       (scale as ScaleSnapshotHandoff).activateSnapshots();
     }
+    _subscribeToButtons(scale);
+  }
+
+  Stream<ScaleButton> get buttonPresses => _buttonController.stream;
+
+  void _subscribeToButtons(Scale scale) {
+    _scaleButtons?.cancel();
+    final generation = _connectionGeneration;
+    if (scale is! ScaleButtonCapable) {
+      _scaleButtons = null;
+      return;
+    }
+    _scaleButtons = scale.buttonPresses.listen((button) {
+      if (_connectionGeneration == generation && identical(_scale, scale)) {
+        _buttonController.add(button);
+      }
+    });
   }
 
   void _onDisconnect() {
@@ -127,8 +154,10 @@ class ScaleController {
     _currentWeightSnapshot = null;
     _scaleSnapshot?.cancel();
     _scaleConnection?.cancel();
+    _scaleButtons?.cancel();
     _scale = null;
     _scaleConnection = null;
+    _scaleButtons = null;
     _resetDisplayEstimator();
     _kalmanEstimator = null;
     _lastSnapshotTime = null;

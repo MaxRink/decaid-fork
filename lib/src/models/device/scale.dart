@@ -36,6 +36,12 @@ abstract interface class DisconnectToSleepScale {
   bool get disconnectsToSleep;
 }
 
+enum ScaleButton { circle, square }
+
+abstract interface class ScaleButtonCapable {
+  Stream<ScaleButton> get buttonPresses;
+}
+
 class ScaleSnapshot {
   final DateTime timestamp;
   final double weight;
