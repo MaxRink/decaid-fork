@@ -587,6 +587,17 @@ the outer timeout near completion. The stage bound is the only limit on the
 poll loop, so raising it grants more poll iterations and nothing else. A
 genuinely stuck erase still fails.
 
+Skale battery metadata uses the standard Battery Service (`0x180F`) and Battery
+Level characteristic (`0x2A19`). The value is optional device-reported metadata:
+only one-byte values from 0 through 100 are accepted. Failed, empty, malformed,
+or out-of-range reads clear the current value and do not fail the connection.
+Reads run on connect and on an injected 30-minute timer, with a single in-flight
+read and connection-generation fencing to prevent stale values after disconnect
+or reconnect. Historical de1app evidence reports fixed `100%` values on some
+Atomax firmware generations, while the observed R029 unit reports changing
+values, so the app must preserve the device value rather than manufacture a
+fallback percentage.
+
 ## Keeping Notes Fresh
 
 Add lessons that would have saved debugging time: new footguns, thread-safety constraints, connection-lifecycle changes, non-obvious symptoms, and cross-transport dependencies. Prune stale claims. Prefer fewer, sharper notes over long background.
