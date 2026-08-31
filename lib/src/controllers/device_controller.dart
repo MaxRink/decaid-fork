@@ -12,6 +12,7 @@ import 'package:reaprime/src/models/device/scan_filter.dart';
 import 'package:reaprime/src/models/device/usb_attach_probe.dart';
 import 'package:reaprime/src/models/device/watch_filter.dart';
 import 'package:reaprime/src/models/device/watch_state.dart';
+import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/services/ble/ble_discovery_service.dart';
 import 'package:reaprime/src/services/telemetry/telemetry_service.dart';
 import 'package:rxdart/rxdart.dart';
@@ -19,6 +20,8 @@ import 'package:rxdart/rxdart.dart';
 class DeviceController
     implements DeviceScanner, DeviceAttachNotifier, UsbAttachProbe {
   final List<DeviceDiscoveryService> _services;
+  final SettingsController? _settingsController;
+  late final void Function() _settingsListener;
 
   late Map<DeviceDiscoveryService, List<Device>> _devices;
 
@@ -104,8 +107,26 @@ class DeviceController
     _flatDevicesCache = null;
   }
 
-  DeviceController(this._services) {
+  DeviceController(this._services, {SettingsController? settingsController})
+    : _settingsController = settingsController {
     _devices = {};
+    _settingsListener = () {
+      final value = settingsController!.skalePoweredByUsb;
+      for (final device in devices) {
+        if (device case final UsbPowerConfigurable configurable) {
+          unawaited(
+            configurable.setUsbPowered(value).catchError((error, stackTrace) {
+              _log.warning(
+                'Failed to apply Skale USB power setting to ${device.deviceId}: $error',
+                error,
+                stackTrace,
+              );
+            }),
+          );
+        }
+      }
+    };
+    settingsController?.addListener(_settingsListener);
   }
 
   bool _initialized = false;
@@ -303,6 +324,21 @@ class DeviceController
     _invalidateDevicesCache();
 
     final currentDevices = this.devices;
+    for (final device in currentDevices) {
+      if (device case final UsbPowerConfigurable configurable) {
+        unawaited(
+          configurable
+              .setUsbPowered(_settingsController?.skalePoweredByUsb ?? false)
+              .catchError((error, stackTrace) {
+                _log.warning(
+                  'Failed to apply Skale USB power setting to ${device.deviceId}: $error',
+                  error,
+                  stackTrace,
+                );
+              }),
+        );
+      }
+    }
     final currentDeviceIds = currentDevices.map((d) => d.deviceId).toSet();
     for (final d in currentDevices) {
       _deviceNamesById[d.deviceId] = d.name;
@@ -381,6 +417,7 @@ class DeviceController
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _settingsController?.removeListener(_settingsListener);
     for (var subscription in _serviceSubscriptions) {
       subscription.cancel();
     }
