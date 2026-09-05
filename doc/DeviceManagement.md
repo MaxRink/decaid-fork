@@ -1,6 +1,7 @@
 # Device Management in Decaid
 
 This document explains how devices (DE1 machines, scales, sensors) are discovered, connected, and managed throughout the Decaid application lifecycle.
+Open the management page from Settings > Devices or from the dashboard.
 
 ## Table of Contents
 
