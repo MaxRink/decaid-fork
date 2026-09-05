@@ -110,22 +110,7 @@ class DeviceController
   DeviceController(this._services, {SettingsController? settingsController})
     : _settingsController = settingsController {
     _devices = {};
-    _settingsListener = () {
-      final value = settingsController!.skalePoweredByUsb;
-      for (final device in devices) {
-        if (device case final UsbPowerConfigurable configurable) {
-          unawaited(
-            configurable.setUsbPowered(value).catchError((error, stackTrace) {
-              _log.warning(
-                'Failed to apply Skale USB power setting to ${device.deviceId}: $error',
-                error,
-                stackTrace,
-              );
-            }),
-          );
-        }
-      }
-    };
+    _settingsListener = () => _applyUsbPowerSetting(devices);
     settingsController?.addListener(_settingsListener);
   }
 
@@ -324,21 +309,7 @@ class DeviceController
     _invalidateDevicesCache();
 
     final currentDevices = this.devices;
-    for (final device in currentDevices) {
-      if (device case final UsbPowerConfigurable configurable) {
-        unawaited(
-          configurable
-              .setUsbPowered(_settingsController?.skalePoweredByUsb ?? false)
-              .catchError((error, stackTrace) {
-                _log.warning(
-                  'Failed to apply Skale USB power setting to ${device.deviceId}: $error',
-                  error,
-                  stackTrace,
-                );
-              }),
-        );
-      }
-    }
+    _applyUsbPowerSetting(currentDevices);
     final currentDeviceIds = currentDevices.map((d) => d.deviceId).toSet();
     for (final d in currentDevices) {
       _deviceNamesById[d.deviceId] = d.name;
@@ -381,6 +352,23 @@ class DeviceController
 
     _deviceStream.add(this.devices);
     _updateDeviceCustomKeys();
+  }
+
+  void _applyUsbPowerSetting(Iterable<Device> devices) {
+    final value = _settingsController?.skalePoweredByUsb ?? false;
+    for (final device in devices) {
+      if (device case final UsbPowerConfigurable configurable) {
+        unawaited(
+          configurable.setUsbPowered(value).catchError((error, stackTrace) {
+            _log.warning(
+              'Failed to apply Skale USB power setting to ${device.deviceId}: $error',
+              error,
+              stackTrace,
+            );
+          }),
+        );
+      }
+    }
   }
 
   void _updateDeviceCustomKeys() {
