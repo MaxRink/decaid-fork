@@ -84,7 +84,12 @@ void main() {
       find.textContaining('Battery: 82% (device-reported)'),
       findsOneWidget,
     );
-    final switchFinder = find.byType(SwitchListTile);
+    expect(find.text('Powered by USB'), findsNothing);
+    await tester.tap(find.byTooltip('Configure Mock Scale'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mock Scale settings'), findsOneWidget);
+    final switchFinder = find.widgetWithText(SwitchListTile, 'Powered by USB');
     expect(switchFinder, findsOneWidget);
     await tester.tap(switchFinder);
     await tester.pump();

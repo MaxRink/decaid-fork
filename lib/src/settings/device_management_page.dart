@@ -25,7 +25,7 @@ class DeviceManagementPage extends StatefulWidget {
 class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
   final List<StreamSubscription<DeviceInformation?>>
-      _deviceInformationSubscriptions = [];
+  _deviceInformationSubscriptions = [];
   List<Device> _devices = [];
 
   @override
@@ -95,17 +95,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                       await widget.settingsController.setPreferredScaleId(id);
                       if (mounted) _showSavedSnackbar();
                     },
-                  ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Skale is powered by USB'),
-                    subtitle: const Text(
-                      'Enable only when the connected Skale has external power. '
-                      'Battery reporting is suppressed while enabled.',
-                    ),
-                    value: widget.settingsController.skalePoweredByUsb,
-                    onChanged: (value) =>
-                        widget.settingsController.setSkalePoweredByUsb(value),
+                    configureAction: (device) => device is UsbPowerConfigurable
+                        ? () => _showScaleSettings(device)
+                        : null,
                   ),
                 ],
               ),
@@ -123,6 +115,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String? selectedId,
     required String emptyLabel,
     required Future<void> Function(String?) onSelected,
+    VoidCallback? Function(Device)? configureAction,
   }) {
     return ShadCard(
       padding: const EdgeInsets.all(16),
@@ -167,6 +160,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 subtitle: _deviceSubtitle(device),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
+                onConfigure: configureAction?.call(device),
               ),
             ),
         ],
@@ -212,6 +206,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String subtitle,
     required bool isSelected,
     required VoidCallback onTap,
+    VoidCallback? onConfigure,
   }) {
     return InkWell(
       onTap: onTap,
@@ -247,6 +242,40 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                   Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
+            ),
+            if (onConfigure != null)
+              IconButton(
+                tooltip: 'Configure $name',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: onConfigure,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showScaleSettings(Device device) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: widget.settingsController,
+        builder: (context, _) => AlertDialog(
+          title: Text('${device.name} settings'),
+          content: SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Powered by USB'),
+            subtitle: const Text(
+              'Enable when this Skale has external power. '
+              'Battery reporting is suppressed while enabled.',
+            ),
+            value: widget.settingsController.skalePoweredByUsb,
+            onChanged: widget.settingsController.setSkalePoweredByUsb,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
             ),
           ],
         ),
