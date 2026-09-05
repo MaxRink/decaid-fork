@@ -89,9 +89,6 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                       await widget.settingsController.setPreferredScaleId(id);
                       if (mounted) _showSavedSnackbar();
                     },
-                    configureAction: (device) => device is ScaleButtonCapable
-                        ? () => _showScaleSettings(device)
-                        : null,
                   ),
                 ],
               ),
@@ -109,7 +106,6 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String? selectedId,
     required String emptyLabel,
     required Future<void> Function(String?) onSelected,
-    VoidCallback? Function(Device)? configureAction,
   }) {
     return ShadCard(
       padding: const EdgeInsets.all(16),
@@ -154,7 +150,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 subtitle: _truncatedId(device.deviceId),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
-                onConfigure: configureAction?.call(device),
+                onConfigure: device is ScaleButtonCapable
+                    ? () => _showScaleSettings(device)
+                    : null,
               ),
             ),
         ],
