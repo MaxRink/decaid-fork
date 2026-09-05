@@ -891,11 +891,11 @@ components:
           example: 82
         powerSource:
           type: string
-          enum: [battery, usb, external, unknown]
+          enum: [usb]
           description: Current power source, when known.
         powerSourceProvenance:
           type: string
-          enum: [deviceReported, manualOverride]
+          enum: [manualOverride]
           description: Whether the power source was reported by the device or selected manually.
 
     DeviceConnectResult:

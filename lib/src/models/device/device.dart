@@ -49,9 +49,9 @@ class DeviceInformation {
   };
 }
 
-enum DevicePowerSource { battery, usb, external, unknown }
+enum DevicePowerSource { usb }
 
-enum DevicePowerSourceProvenance { deviceReported, manualOverride }
+enum DevicePowerSourceProvenance { manualOverride }
 
 abstract interface class DeviceInformationCapable {
   DeviceInformation? get currentDeviceInformation;
