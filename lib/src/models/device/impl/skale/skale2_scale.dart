@@ -132,8 +132,6 @@ class Skale2Scale implements Scale, DeviceInformationCapable {
             _weightSubscribed = false;
             _buttonSubscribed = false;
             _stopBatteryRefresh();
-            _batteryLevel = null;
-            _batterySupported = false;
             _clearDeviceInformation();
           });
 
@@ -169,8 +167,6 @@ class Skale2Scale implements Scale, DeviceInformationCapable {
   Future<void> disconnect() async {
     _connectionGeneration++;
     _stopBatteryRefresh();
-    _batteryLevel = null;
-    _batterySupported = false;
     _clearDeviceInformation();
     try {
       await _transport.disconnect();
@@ -204,9 +200,7 @@ class Skale2Scale implements Scale, DeviceInformationCapable {
     if (!await _isConnectionActive(generation)) return;
 
     _batterySupported = batteryService.matchesAny(services);
-    if (_batterySupported) {
-      await _readBatteryLevel(generation);
-    }
+    await _readBatteryLevel(generation);
     if (!await _isConnectionActive(generation)) return;
 
     await Future.delayed(_initStepDelayOverride);
