@@ -14,11 +14,8 @@ import 'package:reaprime/src/models/data/shot_state_event.dart';
 import 'package:reaprime/src/models/data/steam_record.dart';
 import 'package:reaprime/src/models/data/workflow.dart';
 import 'package:reaprime/src/models/device/de1_interface.dart';
-import 'package:reaprime/src/models/device/device.dart';
 import 'package:reaprime/src/models/device/machine.dart';
 import 'package:reaprime/src/models/device/scale.dart';
-import 'package:reaprime/src/models/device/device_implementation.dart';
-import 'package:reaprime/src/models/device/transport/data_transport.dart';
 import 'package:reaprime/src/services/storage/storage_service.dart';
 import 'package:reaprime/src/settings/gateway_mode.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
@@ -27,6 +24,7 @@ import 'package:rxdart/rxdart.dart';
 import '../helpers/mock_device_discovery_service.dart';
 import '../helpers/mock_settings_service.dart';
 import '../helpers/test_de1.dart';
+import '../helpers/test_scale.dart';
 
 class _TestDe1Controller extends De1Controller {
   final BehaviorSubject<De1Interface?> de1Subject = BehaviorSubject.seeded(
@@ -66,36 +64,17 @@ class _TestDe1Controller extends De1Controller {
   }
 }
 
-class _ButtonScale implements Scale, ScaleButtonCapable {
+class _ButtonScale extends TestScale implements ScaleButtonCapable {
   final _buttons = StreamController<ScaleButton>.broadcast();
-  final _connection = BehaviorSubject<ConnectionState>.seeded(
-    ConnectionState.connected,
-  );
   int tareCount = 0;
   Completer<void>? tareCompleter;
   bool failTare = false;
 
-  @override
-  String get deviceId => 'button-scale';
-  @override
-  String get name => 'Button scale';
-  @override
-  DeviceType get type => DeviceType.scale;
-  @override
-  DeviceImplementation get implementation => DeviceImplementation.unifiedDe1;
-  @override
-  TransportType get transportType => TransportType.unknown;
-  @override
-  Stream<ConnectionState> get connectionState => _connection.stream;
-  @override
-  Stream<ScaleSnapshot> get currentSnapshot => const Stream.empty();
+  _ButtonScale() : super(deviceId: 'button-scale', name: 'Button scale');
+
   @override
   Stream<ScaleButton> get buttonPresses => _buttons.stream;
-  @override
-  Future<void> onConnect() async {}
-  @override
-  Future<void> disconnect() async =>
-      _connection.add(ConnectionState.disconnected);
+
   @override
   Future<void> tare() async {
     tareCount++;
@@ -104,21 +83,11 @@ class _ButtonScale implements Scale, ScaleButtonCapable {
     if (pending != null) await pending.future;
   }
 
-  @override
-  Future<void> sleepDisplay() async {}
-  @override
-  Future<void> wakeDisplay() async {}
-  @override
-  Future<void> startTimer() async {}
-  @override
-  Future<void> stopTimer() async {}
-  @override
-  Future<void> resetTimer() async {}
-
   void press(ScaleButton button) => _buttons.add(button);
+
   Future<void> close() async {
     await _buttons.close();
-    await _connection.close();
+    dispose();
   }
 }
 
