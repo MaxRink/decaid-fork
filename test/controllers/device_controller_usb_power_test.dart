@@ -22,17 +22,23 @@ class _ConfigurableScale extends TestScale implements UsbPowerConfigurable {
   }
 }
 
+Future<(MockDeviceDiscoveryService, SettingsController, DeviceController)>
+_createController() async {
+  final discovery = MockDeviceDiscoveryService();
+  final settings = SettingsController(MockSettingsService());
+  await settings.loadSettings();
+  final controller = DeviceController([
+    discovery,
+  ], settingsController: settings);
+  await controller.initialize();
+  return (discovery, settings, controller);
+}
+
 void main() {
   test(
     'applies USB setting to existing and newly discovered devices',
     () async {
-      final discovery = MockDeviceDiscoveryService();
-      final settings = SettingsController(MockSettingsService());
-      await settings.loadSettings();
-      final controller = DeviceController([
-        discovery,
-      ], settingsController: settings);
-      await controller.initialize();
+      final (discovery, settings, controller) = await _createController();
       final existing = _ConfigurableScale();
       discovery.addDevice(existing);
       await Future<void>.delayed(Duration.zero);
@@ -54,13 +60,7 @@ void main() {
   test(
     'ignores non-configurable devices and contains configuration failures',
     () async {
-      final discovery = MockDeviceDiscoveryService();
-      final settings = SettingsController(MockSettingsService());
-      await settings.loadSettings();
-      final controller = DeviceController([
-        discovery,
-      ], settingsController: settings);
-      await controller.initialize();
+      final (discovery, settings, controller) = await _createController();
       final failing = _ConfigurableScale()..fail = true;
       discovery.addDevice(TestScale(deviceId: 'ordinary'));
       discovery.addDevice(failing);
@@ -75,13 +75,7 @@ void main() {
   );
 
   test('removes settings listener on dispose', () async {
-    final discovery = MockDeviceDiscoveryService();
-    final settings = SettingsController(MockSettingsService());
-    await settings.loadSettings();
-    final controller = DeviceController([
-      discovery,
-    ], settingsController: settings);
-    await controller.initialize();
+    final (discovery, settings, controller) = await _createController();
     final scale = _ConfigurableScale();
     discovery.addDevice(scale);
     await Future<void>.delayed(Duration.zero);
