@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/models/device/device.dart';
+import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -88,26 +89,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                       await widget.settingsController.setPreferredScaleId(id);
                       if (mounted) _showSavedSnackbar();
                     },
-                  ),
-                  ShadCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Scale button starts espresso'),
-                        subtitle: const Text(
-                          'Allow the Skale square button to start or stop espresso. The circle button always tares.',
-                        ),
-                        value:
-                            widget.settingsController.scaleButtonStartsEspresso,
-                        onChanged: (value) async {
-                          await widget.settingsController
-                              .setScaleButtonStartsEspresso(value);
-                          if (mounted) _showSavedSnackbar();
-                        },
-                      ),
-                    ),
+                    configureAction: (device) => device is ScaleButtonCapable
+                        ? () => _showScaleSettings(device)
+                        : null,
                   ),
                 ],
               ),
@@ -125,6 +109,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String? selectedId,
     required String emptyLabel,
     required Future<void> Function(String?) onSelected,
+    VoidCallback? Function(Device)? configureAction,
   }) {
     return ShadCard(
       padding: const EdgeInsets.all(16),
@@ -169,6 +154,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 subtitle: _truncatedId(device.deviceId),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
+                onConfigure: configureAction?.call(device),
               ),
             ),
         ],
@@ -181,6 +167,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String subtitle,
     required bool isSelected,
     required VoidCallback onTap,
+    VoidCallback? onConfigure,
   }) {
     return InkWell(
       onTap: onTap,
@@ -216,6 +203,40 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                   Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
+            ),
+            if (onConfigure != null)
+              IconButton(
+                tooltip: 'Configure $name',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: onConfigure,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showScaleSettings(Device device) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: widget.settingsController,
+        builder: (context, _) => AlertDialog(
+          title: Text('${device.name} settings'),
+          content: SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Square button starts espresso'),
+            subtitle: const Text(
+              'The square button starts or stops espresso. '
+              'The circle button always tares.',
+            ),
+            value: widget.settingsController.scaleButtonStartsEspresso,
+            onChanged: widget.settingsController.setScaleButtonStartsEspresso,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
             ),
           ],
         ),
