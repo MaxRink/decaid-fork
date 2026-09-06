@@ -21,6 +21,7 @@ class ScaleController {
 
   String? _lastConnectedDeviceId;
   String? get lastConnectedDeviceId => _lastConnectedDeviceId;
+  String? get currentConnectedDeviceId => _scale?.deviceId;
   int _connectionGeneration = 0;
   int get connectionGeneration => _connectionGeneration;
   bool _snapshotSessionActive = false;

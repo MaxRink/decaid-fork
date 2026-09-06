@@ -14,6 +14,7 @@ import 'package:reaprime/src/models/data/shot_state_event.dart';
 import 'package:reaprime/src/models/data/steam_record.dart';
 import 'package:reaprime/src/models/data/workflow.dart';
 import 'package:reaprime/src/models/device/de1_interface.dart';
+import 'package:reaprime/src/models/device/device.dart' as device;
 import 'package:reaprime/src/models/device/machine.dart';
 import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/services/storage/storage_service.dart';
@@ -70,7 +71,7 @@ class _ButtonScale extends TestScale implements ScaleButtonCapable {
   Completer<void>? tareCompleter;
   bool failTare = false;
 
-  _ButtonScale() : super(deviceId: 'button-scale', name: 'Button scale');
+  _ButtonScale({super.deviceId = 'button-scale', super.name = 'Button scale'});
 
   @override
   Stream<ScaleButton> get buttonPresses => _buttons.stream;
@@ -273,7 +274,10 @@ void main() {
       await pump();
       expect(testDe1.requestedStates, isEmpty);
 
-      await settingsController.setScaleButtonStartsEspresso(true);
+      await settingsController.setScaleButtonStartsEspressoForDevice(
+        buttonScale.deviceId,
+        true,
+      );
       testDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
       await pump();
       buttonScale.press(ScaleButton.square);
@@ -282,8 +286,59 @@ void main() {
     },
   );
 
+  test('square button setting follows the active scale device ID', () async {
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      buttonScale.deviceId,
+      true,
+    );
+    final secondScale = _ButtonScale(
+      deviceId: 'second-scale',
+      name: 'Second scale',
+    );
+    await scaleController.connectToScale(secondScale);
+    expect(scaleController.lastConnectedDeviceId, 'second-scale');
+
+    testDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
+    await pump();
+    secondScale.press(ScaleButton.square);
+    await pump();
+    expect(testDe1.requestedStates, isEmpty);
+
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      secondScale.deviceId,
+      true,
+    );
+    secondScale.press(ScaleButton.square);
+    await pump();
+    expect(testDe1.requestedStates, [MachineState.espresso]);
+    await secondScale.close();
+  });
+
+  test(
+    'queued square event after scale disconnect does not trigger espresso',
+    () async {
+      await settingsController.setScaleButtonStartsEspressoForDevice(
+        buttonScale.deviceId,
+        true,
+      );
+      testDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
+      await pump();
+
+      buttonScale.press(ScaleButton.square);
+      buttonScale.setConnectionState(device.ConnectionState.disconnected);
+      await pump();
+
+      expect(scaleController.currentConnectedDeviceId, isNull);
+      expect(scaleController.lastConnectedDeviceId, buttonScale.deviceId);
+      expect(testDe1.requestedStates, isEmpty);
+    },
+  );
+
   test('square button stops espresso and records app stop intent', () async {
-    await settingsController.setScaleButtonStartsEspresso(true);
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      buttonScale.deviceId,
+      true,
+    );
     testDe1.emitStateAndSubstate(
       MachineState.espresso,
       MachineSubstate.pouring,
@@ -298,7 +353,10 @@ void main() {
   test(
     'square button is ignored for non-action states, full gateway, and no machine',
     () async {
-      await settingsController.setScaleButtonStartsEspresso(true);
+      await settingsController.setScaleButtonStartsEspressoForDevice(
+        buttonScale.deviceId,
+        true,
+      );
       for (final state in MachineState.values) {
         if (state == MachineState.idle || state == MachineState.espresso) {
           continue;
@@ -327,7 +385,10 @@ void main() {
   );
 
   test('serializes a pending action across machine replacement', () async {
-    await settingsController.setScaleButtonStartsEspresso(true);
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      buttonScale.deviceId,
+      true,
+    );
     testDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
     await pump();
     final gate = Completer<void>();

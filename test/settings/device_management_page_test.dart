@@ -13,14 +13,14 @@ import '../helpers/mock_settings_service.dart';
 import '../helpers/test_scale.dart';
 
 class _ButtonScale extends TestScale implements ScaleButtonCapable {
-  _ButtonScale() : super(name: 'Skale2');
+  _ButtonScale({required super.deviceId, required super.name});
 
   @override
   Stream<ScaleButton> get buttonPresses => const Stream.empty();
 }
 
 void main() {
-  testWidgets('scale button switch is off by default and persists changes', (
+  testWidgets('each capable scale has an independent button setting', (
     tester,
   ) async {
     final settings = SettingsController(MockSettingsService());
@@ -28,7 +28,8 @@ void main() {
     final discovery = MockDeviceDiscoveryService();
     final devices = DeviceController([discovery]);
     await devices.initialize();
-    discovery.addDevice(_ButtonScale());
+    discovery.addDevice(_ButtonScale(deviceId: 'scale-a', name: 'Skale A'));
+    discovery.addDevice(_ButtonScale(deviceId: 'scale-b', name: 'Skale B'));
 
     await tester.pumpWidget(
       ShadApp(
@@ -42,12 +43,15 @@ void main() {
       ),
     );
 
-    expect(settings.scaleButtonStartsEspresso, isFalse);
+    expect(settings.scaleButtonStartsEspressoByDevice, isEmpty);
     expect(find.text('Square button starts espresso'), findsNothing);
-    await tester.tap(find.byTooltip('Configure Skale2'));
+    expect(find.byTooltip('Configure Skale A'), findsOneWidget);
+    expect(find.byTooltip('Configure Skale B'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Configure Skale A'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Skale2 settings'), findsOneWidget);
+    expect(find.text('Skale A settings'), findsOneWidget);
     final toggle = find.widgetWithText(
       SwitchListTile,
       'Square button starts espresso',
@@ -55,7 +59,41 @@ void main() {
     expect(toggle, findsOneWidget);
     await tester.tap(toggle);
     await tester.pump();
-    expect(settings.scaleButtonStartsEspresso, isTrue);
+    expect(settings.scaleButtonStartsEspressoByDevice, {'scale-a': true});
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Configure Skale B'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(
+              SwitchListTile,
+              'Square button starts espresso',
+            ),
+          )
+          .value,
+      isFalse,
+    );
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Square button starts espresso'),
+    );
+    await tester.pump();
+    expect(settings.scaleButtonStartsEspressoByDevice, {
+      'scale-a': true,
+      'scale-b': true,
+    });
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Configure Skale A'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Square button starts espresso'),
+    );
+    await tester.pump();
+    expect(settings.scaleButtonStartsEspressoByDevice, {'scale-b': true});
 
     devices.dispose();
     discovery.dispose();

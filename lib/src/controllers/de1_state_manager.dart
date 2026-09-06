@@ -234,7 +234,10 @@ class De1StateManager with WidgetsBindingObserver {
     if (_disposed || _scaleButtonActionInFlight) return;
     if (button == ScaleButton.circle) {
       unawaited(_tareFromScaleButton());
-    } else if (_settingsController.scaleButtonStartsEspresso) {
+    } else if (_scaleController.currentConnectedDeviceId != null &&
+        _settingsController.scaleButtonStartsEspressoForDevice(
+          _scaleController.currentConnectedDeviceId!,
+        )) {
       unawaited(_toggleEspressoFromScaleButton());
     }
   }

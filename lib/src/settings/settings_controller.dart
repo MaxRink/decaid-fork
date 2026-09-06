@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:reaprime/src/services/android_updater.dart';
@@ -38,7 +39,7 @@ class SettingsController with ChangeNotifier {
 
   bool _stopHotWaterAtWeight = true;
 
-  bool _scaleButtonStartsEspresso = false;
+  Map<String, bool> _scaleButtonStartsEspressoByDevice = {};
 
   String? _preferredMachineId;
 
@@ -87,7 +88,11 @@ class SettingsController with ChangeNotifier {
   bool get blockOnNoScale => _blockOnNoScale;
   bool get blockTareDuringShot => _blockTareDuringShot;
   bool get stopHotWaterAtWeight => _stopHotWaterAtWeight;
-  bool get scaleButtonStartsEspresso => _scaleButtonStartsEspresso;
+  Map<String, bool> get scaleButtonStartsEspressoByDevice =>
+      Map.unmodifiable(_scaleButtonStartsEspressoByDevice);
+
+  bool scaleButtonStartsEspressoForDevice(String deviceId) =>
+      _scaleButtonStartsEspressoByDevice[deviceId] ?? false;
   String? get preferredMachineId => _preferredMachineId;
   String? get preferredScaleId => _preferredScaleId;
   String get defaultSkinId => _defaultSkinId;
@@ -128,8 +133,8 @@ class SettingsController with ChangeNotifier {
     _blockOnNoScale = await _settingsService.blockOnNoScale();
     _blockTareDuringShot = await _settingsService.blockTareDuringShot();
     _stopHotWaterAtWeight = await _settingsService.stopHotWaterAtWeight();
-    _scaleButtonStartsEspresso = await _settingsService
-        .scaleButtonStartsEspresso();
+    _scaleButtonStartsEspressoByDevice = await _settingsService
+        .scaleButtonStartsEspressoByDevice();
     _preferredMachineId = await _settingsService.preferredMachineId();
     _preferredScaleId = await _settingsService.preferredScaleId();
     _defaultSkinId = await _settingsService.defaultSkinId();
@@ -298,11 +303,29 @@ class SettingsController with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setScaleButtonStartsEspresso(bool value) async {
-    if (value == _scaleButtonStartsEspresso) return;
-    _scaleButtonStartsEspresso = value;
+  Future<void> setScaleButtonStartsEspressoForDevice(
+    String deviceId,
+    bool value,
+  ) => setScaleButtonStartsEspressoByDevice({
+    ..._scaleButtonStartsEspressoByDevice,
+    deviceId: value,
+  });
+
+  Future<void> setScaleButtonStartsEspressoByDevice(
+    Map<String, bool> value,
+  ) async {
+    final values = {
+      for (final entry in value.entries)
+        if (entry.value) entry.key: true,
+    };
+    if (mapEquals(values, _scaleButtonStartsEspressoByDevice)) {
+      return;
+    }
+    _scaleButtonStartsEspressoByDevice = values;
     notifyListeners();
-    await _settingsService.setScaleButtonStartsEspresso(value);
+    await _settingsService.setScaleButtonStartsEspressoByDevice(
+      _scaleButtonStartsEspressoByDevice,
+    );
   }
 
   Future<void> setBlockTareDuringShot(bool value) async {
