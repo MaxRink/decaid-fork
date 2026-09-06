@@ -363,6 +363,33 @@ void main() {
     expect(testDe1.requestedStates, [MachineState.idle]);
   });
 
+  test('square button does not arm GHC espresso but still stops it', () async {
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      buttonScale.deviceId,
+      true,
+    );
+    final ghcDe1 = TestDe1(
+      deviceId: 'ghc-de1',
+      groupHeadControllerPresent: true,
+    );
+    de1Controller.connect(ghcDe1);
+    await pump();
+
+    ghcDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
+    await pump();
+    buttonScale.press(ScaleButton.square);
+    await pump();
+    expect(ghcDe1.requestedStates, isEmpty);
+
+    ghcDe1.emitStateAndSubstate(MachineState.espresso, MachineSubstate.pouring);
+    await pump();
+    buttonScale.press(ScaleButton.square);
+    await pump();
+    expect(ghcDe1.requestedStates, [MachineState.idle]);
+
+    await ghcDe1.dispose();
+  });
+
   test('square button setting follows the active scale device ID', () async {
     await settingsController.setScaleButtonStartsEspressoForDevice(
       buttonScale.deviceId,

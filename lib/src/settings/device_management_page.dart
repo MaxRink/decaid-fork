@@ -223,9 +223,10 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
           title: Text('${device.name} settings'),
           content: SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Square button starts espresso'),
+            title: const Text('Square button controls espresso'),
             subtitle: const Text(
-              'The square button starts or stops espresso. '
+              'Starts espresso on machines without an active group-head '
+              'controller, and stops active espresso on all machines. '
               'The circle button always tares.',
             ),
             value: widget.settingsController.scaleButtonStartsEspressoForDevice(

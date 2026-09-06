@@ -311,8 +311,10 @@ Settings fields include: `gatewayMode`, `themeMode`, `logLevel`, `weightFlowMult
 `scaleButtonStartsEspressoByDevice` is an object keyed by exact scale device ID.
 Each boolean controls that Skale's square-button espresso action independently;
 only enabled IDs are stored and returned with `true`; missing IDs default to
-`false`. The old global `scaleButtonStartsEspresso` field is not returned or
-accepted.
+`false`. Starts work only on machines without an active group-head controller;
+active-GHC machines require operations to start at the group head, but the
+square button can still stop active espresso. The old global
+`scaleButtonStartsEspresso` field is not returned or accepted.
 
 `stopHotWaterAtWeight` (boolean, default `true`): when on and a scale is connected, hot-water dispensing tares the scale and stops at the configured hot-water `volume` target treated as grams (mirrors the espresso stop-at-weight). The machine's own volume/time stop remains a backstop, and the value is ignored in `full` gateway mode (a skin owns the machine). `hotWaterFlowMultiplier` (number, default `0.3`) is the seconds-of-lookahead applied to scale weight flow for that stop — separate from `weightFlowMultiplier` because hot water dispenses with a different pump/flow profile than espresso. See [DeviceManagement.md](DeviceManagement.md#hot-water-stop-at-weight).
 

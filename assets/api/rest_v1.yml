@@ -6428,7 +6428,7 @@ components:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine). Set false to use only the machine's native volume/time stop.
           type: boolean
         scaleButtonStartsEspressoByDevice:
-          description: Per-device setting controlling whether a connected Skale square-button press requests espresso only from machine idle or stops an active espresso. Keys are exact scale device IDs; enabled IDs are stored and returned with true values, while absent IDs are disabled.
+          description: Per-device setting controlling whether a connected Skale square-button press requests espresso from idle or sleeping on machines without an active group-head controller, or stops active espresso on any machine. Active-GHC machines require operations to start at the group head. Keys are exact scale device IDs; enabled IDs are stored and returned with true values, while absent IDs are disabled.
           type: object
           additionalProperties:
             type: boolean
@@ -6531,7 +6531,7 @@ components:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine).
           type: boolean
         scaleButtonStartsEspressoByDevice:
-          description: Per-device Skale square-button espresso control settings, keyed by exact scale device ID. Enabled IDs are returned with true values; missing IDs are disabled.
+          description: Per-device Skale square-button espresso control settings, keyed by exact scale device ID. Starts are supported only on machines without an active group-head controller; stops remain supported on all machines. Enabled IDs are returned with true values; missing IDs are disabled.
           type: object
           additionalProperties:
             type: boolean

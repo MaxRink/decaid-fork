@@ -44,7 +44,7 @@ void main() {
     );
 
     expect(settings.scaleButtonStartsEspressoByDevice, isEmpty);
-    expect(find.text('Square button starts espresso'), findsNothing);
+    expect(find.text('Square button controls espresso'), findsNothing);
     expect(find.byTooltip('Configure Skale A'), findsOneWidget);
     expect(find.byTooltip('Configure Skale B'), findsOneWidget);
 
@@ -54,7 +54,7 @@ void main() {
     expect(find.text('Skale A settings'), findsOneWidget);
     final toggle = find.widgetWithText(
       SwitchListTile,
-      'Square button starts espresso',
+      'Square button controls espresso',
     );
     expect(toggle, findsOneWidget);
     await tester.tap(toggle);
@@ -70,14 +70,14 @@ void main() {
           .widget<SwitchListTile>(
             find.widgetWithText(
               SwitchListTile,
-              'Square button starts espresso',
+              'Square button controls espresso',
             ),
           )
           .value,
       isFalse,
     );
     await tester.tap(
-      find.widgetWithText(SwitchListTile, 'Square button starts espresso'),
+      find.widgetWithText(SwitchListTile, 'Square button controls espresso'),
     );
     await tester.pump();
     expect(settings.scaleButtonStartsEspressoByDevice, {
@@ -90,7 +90,7 @@ void main() {
     await tester.tap(find.byTooltip('Configure Skale A'));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.widgetWithText(SwitchListTile, 'Square button starts espresso'),
+      find.widgetWithText(SwitchListTile, 'Square button controls espresso'),
     );
     await tester.pump();
     expect(settings.scaleButtonStartsEspressoByDevice, {'scale-b': true});
