@@ -289,10 +289,79 @@ void main() {
       await pump();
       buttonScale.press(ScaleButton.square);
       await pump();
-      expect(de1Controller.controllerRequestedStates, [MachineState.espresso]);
+      expect(de1Controller.controllerRequestedStates, isEmpty);
       expect(testDe1.requestedStates, [MachineState.espresso]);
     },
   );
+
+  test(
+    'square button wakes a sleeping machine before starting espresso',
+    () async {
+      await settingsController.setScaleButtonStartsEspressoForDevice(
+        buttonScale.deviceId,
+        true,
+      );
+      testDe1.emitStateAndSubstate(MachineState.sleeping, MachineSubstate.idle);
+      await pump();
+
+      buttonScale.press(ScaleButton.square);
+      await pump();
+      expect(de1Controller.controllerRequestedStates, isEmpty);
+      expect(testDe1.requestedStates, [
+        MachineState.idle,
+        MachineState.espresso,
+      ]);
+    },
+  );
+
+  test(
+    'sleeping wake does not start espresso on a replacement machine',
+    () async {
+      await settingsController.setScaleButtonStartsEspressoForDevice(
+        buttonScale.deviceId,
+        true,
+      );
+      testDe1.emitStateAndSubstate(MachineState.sleeping, MachineSubstate.idle);
+      await pump();
+
+      final wakeGate = Completer<void>();
+      testDe1.requestStateGate = wakeGate;
+      buttonScale.press(ScaleButton.square);
+      await pump();
+      expect(testDe1.requestedStates, [MachineState.idle]);
+
+      final replacement = TestDe1(deviceId: 'replacement-de1');
+      de1Controller.connect(replacement);
+      await pump();
+      wakeGate.complete();
+      await pump();
+      await pump();
+
+      expect(replacement.requestedStates, isEmpty);
+      await replacement.dispose();
+    },
+  );
+
+  test('sleeping wake does not start after another operation begins', () async {
+    await settingsController.setScaleButtonStartsEspressoForDevice(
+      buttonScale.deviceId,
+      true,
+    );
+    testDe1.emitStateAndSubstate(MachineState.sleeping, MachineSubstate.idle);
+    await pump();
+
+    final wakeGate = Completer<void>();
+    testDe1.requestStateGate = wakeGate;
+    buttonScale.press(ScaleButton.square);
+    await pump();
+    testDe1.emitStateAndSubstate(MachineState.steam, MachineSubstate.idle);
+    await pump();
+    wakeGate.complete();
+    await pump();
+    await pump();
+
+    expect(testDe1.requestedStates, [MachineState.idle]);
+  });
 
   test('square button setting follows the active scale device ID', () async {
     await settingsController.setScaleButtonStartsEspressoForDevice(
@@ -354,7 +423,7 @@ void main() {
     await pump();
     buttonScale.press(ScaleButton.square);
     await pump();
-    expect(de1Controller.controllerRequestedStates, [MachineState.idle]);
+    expect(de1Controller.controllerRequestedStates, isEmpty);
     expect(testDe1.requestedStates, [MachineState.idle]);
     expect(de1Controller.consumeStopIntent(), ShotDecisionReason.appStop);
   });
@@ -367,7 +436,9 @@ void main() {
         true,
       );
       for (final state in MachineState.values) {
-        if (state == MachineState.idle || state == MachineState.espresso) {
+        if (state == MachineState.idle ||
+            state == MachineState.sleeping ||
+            state == MachineState.espresso) {
           continue;
         }
         testDe1.emitStateAndSubstate(state, MachineSubstate.idle);
