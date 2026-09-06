@@ -15,6 +15,7 @@ class _InformationScale extends TestScale
     implements DeviceInformationCapable, UsbPowerConfigurable {
   _InformationScale({
     required super.deviceId,
+    required this.scaleName,
     required String firmwareVersion,
     int? batteryLevel,
   }) : _information = DeviceInformation(
@@ -28,9 +29,13 @@ class _InformationScale extends TestScale
          ),
        );
 
+  final String scaleName;
   DeviceInformation? _information;
   final BehaviorSubject<DeviceInformation?> _informationSubject;
   bool poweredByUsb = false;
+
+  @override
+  String get name => scaleName;
 
   @override
   Future<void> setUsbPowered(bool value) async {
@@ -64,10 +69,17 @@ void main() {
 
     final first = _InformationScale(
       deviceId: 'skale-device',
+      scaleName: 'Scale A',
       firmwareVersion: 'R029',
       batteryLevel: 82,
     );
+    final second = _InformationScale(
+      deviceId: 'other-skale-device',
+      scaleName: 'Scale B',
+      firmwareVersion: 'R028',
+    );
     discovery.addDevice(first);
+    discovery.addDevice(second);
 
     await tester.pumpWidget(
       ShadApp(
@@ -85,19 +97,28 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Powered by USB'), findsNothing);
-    await tester.tap(find.byTooltip('Configure Mock Scale'));
+    expect(find.byTooltip('Configure Scale A'), findsOneWidget);
+    expect(find.byTooltip('Configure Scale B'), findsOneWidget);
+    await tester.tap(find.byTooltip('Configure Scale B'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Mock Scale settings'), findsOneWidget);
+    expect(find.text('Scale B settings'), findsOneWidget);
     final switchFinder = find.widgetWithText(SwitchListTile, 'Powered by USB');
     expect(switchFinder, findsOneWidget);
     await tester.tap(switchFinder);
     await tester.pump();
-    expect(settingsController.skalePoweredByUsb, isTrue);
+    expect(
+      settingsController.isSkalePoweredByUsb('other-skale-device'),
+      isTrue,
+    );
+    expect(settingsController.isSkalePoweredByUsb('skale-device'), isFalse);
+    expect(second.poweredByUsb, isTrue);
+    expect(first.poweredByUsb, isFalse);
 
     discovery.clear();
     final replacement = _InformationScale(
       deviceId: 'skale-device',
+      scaleName: 'Scale A',
       firmwareVersion: 'R030',
     );
     discovery.addDevice(replacement);

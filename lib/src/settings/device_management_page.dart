@@ -267,8 +267,11 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
               'Enable when this Skale has external power. '
               'Battery reporting is suppressed while enabled.',
             ),
-            value: widget.settingsController.skalePoweredByUsb,
-            onChanged: widget.settingsController.setSkalePoweredByUsb,
+            value: widget.settingsController.isSkalePoweredByUsb(
+              device.deviceId,
+            ),
+            onChanged: (value) => widget.settingsController
+                .setSkalePoweredByUsb(device.deviceId, value),
           ),
           actions: [
             TextButton(

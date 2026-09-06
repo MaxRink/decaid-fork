@@ -27,7 +27,7 @@ class SettingsExportSection implements DataExportSection {
           'volumeFlowMultiplier': _controller.volumeFlowMultiplier,
           'hotWaterFlowMultiplier': _controller.hotWaterFlowMultiplier,
           'scalePowerMode': _controller.scalePowerMode.name,
-          'skalePoweredByUsb': _controller.skalePoweredByUsb,
+          'skalePoweredByUsbByDevice': _controller.skalePoweredByUsbByDevice,
           'blockOnNoScale': _controller.blockOnNoScale,
           'blockTareDuringShot': _controller.blockTareDuringShot,
           'stopHotWaterAtWeight': _controller.stopHotWaterAtWeight,
@@ -123,13 +123,26 @@ class SettingsExportSection implements DataExportSection {
           }
         }
 
-        if (settings.containsKey('skalePoweredByUsb')) {
-          final value = settings['skalePoweredByUsb'];
-          if (value is bool) {
-            await _controller.setSkalePoweredByUsb(value);
-            imported++;
+        if (settings.containsKey('skalePoweredByUsbByDevice')) {
+          final value = settings['skalePoweredByUsbByDevice'];
+          if (value is! Map) {
+            errors.add('Invalid skalePoweredByUsbByDevice: $value');
           } else {
-            errors.add('Invalid skalePoweredByUsb: $value');
+            final parsed = <String, bool>{};
+            var valid = true;
+            for (final entry in value.entries) {
+              if (entry.key is! String || entry.value is! bool) {
+                valid = false;
+                break;
+              }
+              parsed[entry.key as String] = entry.value as bool;
+            }
+            if (valid) {
+              await _controller.setSkalePoweredByUsbByDevice(parsed);
+              imported++;
+            } else {
+              errors.add('Invalid skalePoweredByUsbByDevice: $value');
+            }
           }
         }
 
