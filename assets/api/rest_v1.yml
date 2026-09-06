@@ -6427,9 +6427,11 @@ components:
         stopHotWaterAtWeight:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine). Set false to use only the machine's native volume/time stop.
           type: boolean
-        scaleButtonStartsEspresso:
-          description: When true, a connected Skale square-button press requests espresso only from machine idle or stops an active espresso. Default false.
-          type: boolean
+        scaleButtonStartsEspressoByDevice:
+          description: Per-device setting controlling whether a connected Skale square-button press requests espresso only from machine idle or stops an active espresso. Keys are exact scale device IDs; enabled IDs are stored and returned with true values, while absent IDs are disabled.
+          type: object
+          additionalProperties:
+            type: boolean
         preferredMachineId:
           description: Device ID of the preferred machine for auto-connect on startup. When set, REA will automatically connect to this machine when it's discovered during device scan. Set to null to clear the preference.
           type: string
@@ -6528,9 +6530,11 @@ components:
         stopHotWaterAtWeight:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine).
           type: boolean
-        scaleButtonStartsEspresso:
-          description: Whether Skale square-button espresso control is enabled. Default false.
-          type: boolean
+        scaleButtonStartsEspressoByDevice:
+          description: Per-device Skale square-button espresso control settings, keyed by exact scale device ID. Enabled IDs are returned with true values; missing IDs are disabled.
+          type: object
+          additionalProperties:
+            type: boolean
         preferredMachineId:
           description: Device ID of the preferred machine for auto-connect on startup. Returns null if no preferred device is set.
           type: string

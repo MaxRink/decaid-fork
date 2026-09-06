@@ -228,8 +228,11 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
               'The square button starts or stops espresso. '
               'The circle button always tares.',
             ),
-            value: widget.settingsController.scaleButtonStartsEspresso,
-            onChanged: widget.settingsController.setScaleButtonStartsEspresso,
+            value: widget.settingsController.scaleButtonStartsEspressoForDevice(
+              device.deviceId,
+            ),
+            onChanged: (value) => widget.settingsController
+                .setScaleButtonStartsEspressoForDevice(device.deviceId, value),
           ),
           actions: [
             TextButton(

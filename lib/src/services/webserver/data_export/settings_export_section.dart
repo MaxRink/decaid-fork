@@ -30,7 +30,8 @@ class SettingsExportSection implements DataExportSection {
           'blockOnNoScale': _controller.blockOnNoScale,
           'blockTareDuringShot': _controller.blockTareDuringShot,
           'stopHotWaterAtWeight': _controller.stopHotWaterAtWeight,
-          'scaleButtonStartsEspresso': _controller.scaleButtonStartsEspresso,
+          'scaleButtonStartsEspressoByDevice':
+              _controller.scaleButtonStartsEspressoByDevice,
           'defaultSkinId': _controller.defaultSkinId,
           'automaticUpdateCheck': _controller.automaticUpdateCheck,
           'chargingMode': _controller.chargingMode.name,
@@ -144,13 +145,26 @@ class SettingsExportSection implements DataExportSection {
           imported++;
         }
 
-        if (settings.containsKey('scaleButtonStartsEspresso')) {
-          final value = settings['scaleButtonStartsEspresso'];
-          if (value is bool) {
-            await _controller.setScaleButtonStartsEspresso(value);
-            imported++;
+        if (settings.containsKey('scaleButtonStartsEspressoByDevice')) {
+          final value = settings['scaleButtonStartsEspressoByDevice'];
+          if (value is! Map) {
+            errors.add('Invalid scaleButtonStartsEspressoByDevice: $value');
           } else {
-            errors.add('Invalid scaleButtonStartsEspresso: $value');
+            final values = <String, bool>{};
+            var valid = true;
+            for (final entry in value.entries) {
+              if (entry.key is! String || entry.value is! bool) {
+                valid = false;
+                break;
+              }
+              values[entry.key as String] = entry.value as bool;
+            }
+            if (valid) {
+              await _controller.setScaleButtonStartsEspressoByDevice(values);
+              imported++;
+            } else {
+              errors.add('Invalid scaleButtonStartsEspressoByDevice: $value');
+            }
           }
         }
 

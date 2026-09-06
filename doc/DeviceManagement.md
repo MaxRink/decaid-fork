@@ -182,10 +182,12 @@ Machine replacement/disconnect resets the push state so the new machine gets
 
 Skale button notifications are exposed through `ScaleButtonCapable` and
 forwarded by `ScaleController`. The circle button always requests a tare. The
-square button is opt-in (`scaleButtonStartsEspresso`, default off), and only
-requests espresso from machine idle or requests idle while espresso is active.
-The toggle is available from Settings > Devices through the settings button on
-the connected Skale row.
+square button is opt-in per exact device ID
+(`scaleButtonStartsEspressoByDevice`, default off), and only requests espresso
+from machine idle or requests idle while espresso is active. Native Device
+Management keeps a settings gear on every capable Skale row; each popup reads
+and writes only that row's device setting. REST and settings export/import use
+the same device-ID keyed object.
 Notifications are serialized and ignored after scale disconnect or replacement;
 other machine states and missing machines have no action.
 When enabled, these physical-button actions remain active while Decaid's app
