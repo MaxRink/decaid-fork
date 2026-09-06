@@ -36,21 +36,24 @@ _createController() async {
 
 void main() {
   test(
-    'applies USB setting to existing and newly discovered devices',
+    'applies each device USB setting independently to existing and new devices',
     () async {
       final (discovery, settings, controller) = await _createController();
-      final existing = _ConfigurableScale();
+      final existing = _ConfigurableScale(deviceId: 'skale-a');
+      final other = _ConfigurableScale(deviceId: 'skale-b');
       discovery.addDevice(existing);
+      discovery.addDevice(other);
       await Future<void>.delayed(Duration.zero);
 
-      await settings.setSkalePoweredByUsb(true);
+      await settings.setSkalePoweredByUsb('skale-a', true);
       await Future<void>.delayed(Duration.zero);
       expect(existing.powered, isTrue);
+      expect(other.powered, isFalse);
 
       final newDevice = _ConfigurableScale(deviceId: 'new-scale');
       discovery.addDevice(newDevice);
       await Future<void>.delayed(Duration.zero);
-      expect(newDevice.powered, isTrue);
+      expect(newDevice.powered, isFalse);
 
       controller.dispose();
       discovery.dispose();
@@ -65,7 +68,7 @@ void main() {
       discovery.addDevice(TestScale(deviceId: 'ordinary'));
       discovery.addDevice(failing);
 
-      await settings.setSkalePoweredByUsb(true);
+      await settings.setSkalePoweredByUsb(failing.deviceId, true);
       await Future<void>.delayed(Duration.zero);
       expect(failing.calls, greaterThanOrEqualTo(1));
 
@@ -81,7 +84,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     controller.dispose();
 
-    await settings.setSkalePoweredByUsb(true);
+    await settings.setSkalePoweredByUsb(scale.deviceId, true);
     await Future<void>.delayed(Duration.zero);
     expect(scale.calls, 1);
 

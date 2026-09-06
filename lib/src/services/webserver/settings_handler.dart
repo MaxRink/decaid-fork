@@ -31,7 +31,7 @@ class SettingsHandler {
       final stopHotWaterAtWeight = _controller.stopHotWaterAtWeight;
       final preferredMachineId = _controller.preferredMachineId;
       final preferredScaleId = _controller.preferredScaleId;
-      final skalePoweredByUsb = _controller.skalePoweredByUsb;
+      final skalePoweredByUsbByDevice = _controller.skalePoweredByUsbByDevice;
       final defaultSkinId = _controller.defaultSkinId;
       final automaticUpdateCheck = _controller.automaticUpdateCheck;
       final result = <String, dynamic>{
@@ -47,7 +47,7 @@ class SettingsHandler {
         'stopHotWaterAtWeight': stopHotWaterAtWeight,
         'preferredMachineId': preferredMachineId,
         'preferredScaleId': preferredScaleId,
-        'skalePoweredByUsb': skalePoweredByUsb,
+        'skalePoweredByUsbByDevice': skalePoweredByUsbByDevice,
         'defaultSkinId': defaultSkinId,
         'automaticUpdateCheck': automaticUpdateCheck,
         'chargingMode': _controller.chargingMode.name,
@@ -73,6 +73,12 @@ class SettingsHandler {
         maxBytes: largeRequestBodyBytes,
       );
       Map<String, dynamic> json = jsonDecode(payload);
+      if (json.containsKey('skalePoweredByUsb')) {
+        return jsonBadRequest({
+          'message':
+              'skalePoweredByUsb was replaced by skalePoweredByUsbByDevice',
+        });
+      }
       if (json.containsKey('gatewayMode')) {
         final GatewayMode? gatewayMode = GatewayModeFromString.fromString(
           json['gatewayMode'],
@@ -265,15 +271,25 @@ class SettingsHandler {
           return jsonBadRequest({'message': 'keepAwake must be a boolean'});
         }
       }
-      if (json.containsKey('skalePoweredByUsb')) {
-        final value = json['skalePoweredByUsb'];
-        if (value is bool) {
-          await _controller.setSkalePoweredByUsb(value);
-        } else {
+      if (json.containsKey('skalePoweredByUsbByDevice')) {
+        final value = json['skalePoweredByUsbByDevice'];
+        if (value is! Map) {
           return jsonBadRequest({
-            'message': 'skalePoweredByUsb must be a boolean',
+            'message':
+                'skalePoweredByUsbByDevice must be an object with boolean values',
           });
         }
+        final parsed = <String, bool>{};
+        for (final entry in value.entries) {
+          if (entry.key is! String || entry.value is! bool) {
+            return jsonBadRequest({
+              'message':
+                  'skalePoweredByUsbByDevice must be an object with boolean values',
+            });
+          }
+          parsed[entry.key as String] = entry.value as bool;
+        }
+        await _controller.setSkalePoweredByUsbByDevice(parsed);
       }
       if (json.containsKey('simulatedDevices')) {
         final value = json['simulatedDevices'];

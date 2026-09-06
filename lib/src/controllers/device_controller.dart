@@ -355,9 +355,10 @@ class DeviceController
   }
 
   void _applyUsbPowerSetting(Iterable<Device> devices) {
-    final value = _settingsController?.skalePoweredByUsb ?? false;
     for (final device in devices) {
       if (device case final UsbPowerConfigurable configurable) {
+        final value =
+            _settingsController?.isSkalePoweredByUsb(device.deviceId) ?? false;
         unawaited(
           configurable.setUsbPowered(value).catchError((error, stackTrace) {
             _log.warning(

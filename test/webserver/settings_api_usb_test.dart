@@ -38,28 +38,33 @@ void main() {
     );
   }
 
-  test('GET and POST expose the Skale USB setting', () async {
+  test('GET and POST expose per-device Skale USB settings', () async {
     final before = await request('GET', '/api/v1/settings');
-    expect(
-      (jsonDecode(await before.readAsString()) as Map)['skalePoweredByUsb'],
-      isFalse,
-    );
+    final beforeJson = jsonDecode(await before.readAsString()) as Map;
+    expect(beforeJson['skalePoweredByUsbByDevice'], isEmpty);
+    expect(beforeJson, isNot(contains('skalePoweredByUsb')));
 
     final update = await request('POST', '/api/v1/settings', {
-      'skalePoweredByUsb': true,
+      'skalePoweredByUsbByDevice': {'skale-a': true, 'skale-b': false},
     });
     expect(update.statusCode, 200);
 
     final after = await request('GET', '/api/v1/settings');
-    expect(
-      (jsonDecode(await after.readAsString()) as Map)['skalePoweredByUsb'],
-      isTrue,
-    );
+    final afterJson = jsonDecode(await after.readAsString()) as Map;
+    expect(afterJson['skalePoweredByUsbByDevice'], {'skale-a': true});
+    expect(afterJson, isNot(contains('skalePoweredByUsb')));
   });
 
-  test('POST rejects a non-boolean Skale USB setting', () async {
+  test('POST rejects invalid per-device Skale USB settings', () async {
     final response = await request('POST', '/api/v1/settings', {
-      'skalePoweredByUsb': 'true',
+      'skalePoweredByUsbByDevice': {'skale-a': 'true'},
+    });
+    expect(response.statusCode, 400);
+  });
+
+  test('POST rejects the removed global Skale USB setting', () async {
+    final response = await request('POST', '/api/v1/settings', {
+      'skalePoweredByUsb': true,
     });
     expect(response.statusCode, 400);
   });
