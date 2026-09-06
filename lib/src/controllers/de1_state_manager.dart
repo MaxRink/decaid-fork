@@ -262,9 +262,9 @@ class De1StateManager with WidgetsBindingObserver {
       if (state == null || machine == null) return;
       if (state == MachineState.espresso) {
         _de1Controller.recordStopIntent(ShotDecisionReason.appStop);
-        await machine.requestState(MachineState.idle);
+        await _de1Controller.requestMachineState(MachineState.idle);
       } else if (state == MachineState.idle) {
-        await machine.requestState(MachineState.espresso);
+        await _de1Controller.requestMachineState(MachineState.espresso);
       }
     } catch (e, st) {
       _logger.warning('Skale square-button espresso toggle failed', e, st);

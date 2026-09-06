@@ -34,6 +34,7 @@ class _TestDe1Controller extends De1Controller {
   De1Interface? current;
   int connectedLookupCount = 0;
   int? failConnectedLookupAt;
+  final List<MachineState> controllerRequestedStates = [];
 
   _TestDe1Controller({required super.controller});
 
@@ -53,6 +54,12 @@ class _TestDe1Controller extends De1Controller {
 
   @override
   De1Interface? get connectedDe1OrNull => current;
+
+  @override
+  Future<void> requestMachineState(MachineState state) async {
+    controllerRequestedStates.add(state);
+    await connectedDe1().requestState(state);
+  }
 
   void connect(De1Interface de1) {
     current = de1;
@@ -282,6 +289,7 @@ void main() {
       await pump();
       buttonScale.press(ScaleButton.square);
       await pump();
+      expect(de1Controller.controllerRequestedStates, [MachineState.espresso]);
       expect(testDe1.requestedStates, [MachineState.espresso]);
     },
   );
@@ -346,6 +354,7 @@ void main() {
     await pump();
     buttonScale.press(ScaleButton.square);
     await pump();
+    expect(de1Controller.controllerRequestedStates, [MachineState.idle]);
     expect(testDe1.requestedStates, [MachineState.idle]);
     expect(de1Controller.consumeStopIntent(), ShotDecisionReason.appStop);
   });
