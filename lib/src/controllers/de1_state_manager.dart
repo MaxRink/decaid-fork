@@ -262,9 +262,17 @@ class De1StateManager with WidgetsBindingObserver {
       if (state == null || machine == null) return;
       if (state == MachineState.espresso) {
         _de1Controller.recordStopIntent(ShotDecisionReason.appStop);
-        await _de1Controller.requestMachineState(MachineState.idle);
+        await machine.requestState(MachineState.idle);
+      } else if (state == MachineState.sleeping) {
+        await machine.requestState(MachineState.idle);
+        if (!identical(_de1Controller.connectedDe1OrNull, machine) ||
+            (_latestSnapshot?.state.state != MachineState.sleeping &&
+                _latestSnapshot?.state.state != MachineState.idle)) {
+          return;
+        }
+        await machine.requestState(MachineState.espresso);
       } else if (state == MachineState.idle) {
-        await _de1Controller.requestMachineState(MachineState.espresso);
+        await machine.requestState(MachineState.espresso);
       }
     } catch (e, st) {
       _logger.warning('Skale square-button espresso toggle failed', e, st);
