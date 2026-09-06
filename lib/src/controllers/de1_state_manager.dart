@@ -263,6 +263,11 @@ class De1StateManager with WidgetsBindingObserver {
       if (state == MachineState.espresso) {
         _de1Controller.recordStopIntent(ShotDecisionReason.appStop);
         await machine.requestState(MachineState.idle);
+      } else if (machine.machineInfo.groupHeadControllerPresent) {
+        _logger.info(
+          'Skale square-button start ignored: active GHC requires '
+          'operations to start at the group head',
+        );
       } else if (state == MachineState.sleeping) {
         await machine.requestState(MachineState.idle);
         if (!identical(_de1Controller.connectedDe1OrNull, machine) ||
