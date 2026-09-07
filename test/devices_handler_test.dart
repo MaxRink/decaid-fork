@@ -13,7 +13,6 @@ import 'package:reaprime/src/models/device/impl/bengle/bengle_virtual_scale.dart
 import 'package:reaprime/src/models/device/impl/bengle/mock_bengle.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/services/webserver_service.dart';
-import 'package:rxdart/rxdart.dart';
 
 import 'helpers/mock_device_discovery_service.dart';
 import 'helpers/mock_settings_service.dart';
