@@ -793,24 +793,3 @@ class _BlockingTestScale extends TestScale {
   @override
   Future<void> onConnect() => blocker.future;
 }
-
-class _DeviceInformationTestScale extends TestScale
-    implements DeviceInformationCapable {
-  _DeviceInformationTestScale({required super.deviceId, required super.name});
-
-  DeviceInformation? _information;
-  final BehaviorSubject<DeviceInformation?> _informationController =
-      BehaviorSubject<DeviceInformation?>.seeded(null);
-
-  @override
-  DeviceInformation? get currentDeviceInformation => _information;
-
-  @override
-  Stream<DeviceInformation?> get deviceInformation =>
-      _informationController.stream;
-
-  void emitDeviceInformation(DeviceInformation? information) {
-    _information = information;
-    _informationController.add(information);
-  }
-}
