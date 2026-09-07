@@ -184,10 +184,6 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
       if (firmwareVersion != null) {
         lines.add('Firmware: $firmwareVersion');
       }
-      final batteryLevel = capable.currentDeviceInformation?.batteryLevel;
-      if (batteryLevel != null) {
-        lines.add('Battery: $batteryLevel% (device-reported)');
-      }
     }
     return lines.join(' · ');
   }

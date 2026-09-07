@@ -23,15 +23,11 @@ abstract class Device {
 
 class DeviceInformation {
   final String? firmwareVersion;
-  final int? batteryLevel;
 
-  const DeviceInformation({this.firmwareVersion, this.batteryLevel});
-
-  bool get isEmpty => firmwareVersion == null && batteryLevel == null;
+  const DeviceInformation({this.firmwareVersion});
 
   Map<String, dynamic> toJson() => {
     if (firmwareVersion != null) 'firmwareVersion': firmwareVersion,
-    if (batteryLevel != null) 'batteryLevel': batteryLevel,
   };
 }
 

@@ -1,105 +1,102 @@
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
-import 'package:reaprime/src/models/device/device.dart';
+import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/settings/device_management_page.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
-import 'package:rxdart/rxdart.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../helpers/mock_device_discovery_service.dart';
 import '../helpers/mock_settings_service.dart';
 import '../helpers/test_scale.dart';
 
-class _InformationScale extends TestScale implements DeviceInformationCapable {
-  _InformationScale({
-    required super.deviceId,
-    required String firmwareVersion,
-    int? batteryLevel,
-  }) : _information = DeviceInformation(
-         firmwareVersion: firmwareVersion,
-         batteryLevel: batteryLevel,
-       ),
-       _informationSubject = BehaviorSubject<DeviceInformation?>.seeded(
-         DeviceInformation(
-           firmwareVersion: firmwareVersion,
-           batteryLevel: batteryLevel,
-         ),
-       );
-
-  DeviceInformation? _information;
-  final BehaviorSubject<DeviceInformation?> _informationSubject;
+class _ButtonScale extends TestScale implements ScaleButtonCapable {
+  _ButtonScale({required super.deviceId, required super.name});
 
   @override
-  DeviceInformation? get currentDeviceInformation => _information;
-
-  @override
-  Stream<DeviceInformation?> get deviceInformation =>
-      _informationSubject.stream;
-
-  void emitFirmware(String firmwareVersion) {
-    _information = DeviceInformation(firmwareVersion: firmwareVersion);
-    _informationSubject.add(_information);
-  }
+  Stream<ScaleButton> get buttonPresses => const Stream.empty();
 }
 
 void main() {
-  testWidgets('shows firmware and follows a same-ID replacement scale', (
+  testWidgets('each capable scale has an independent button setting', (
     tester,
   ) async {
+    final settings = SettingsController(MockSettingsService());
+    await settings.loadSettings();
     final discovery = MockDeviceDiscoveryService();
-    final deviceController = DeviceController([discovery]);
-    await deviceController.initialize();
-    final settingsController = SettingsController(MockSettingsService());
-    await settingsController.loadSettings();
-
-    final first = _InformationScale(
-      deviceId: 'skale-device',
-      firmwareVersion: 'R029',
-      batteryLevel: 82,
-    );
-    discovery.addDevice(first);
+    final devices = DeviceController([discovery]);
+    await devices.initialize();
+    discovery.addDevice(_ButtonScale(deviceId: 'scale-a', name: 'Skale A'));
+    discovery.addDevice(_ButtonScale(deviceId: 'scale-b', name: 'Skale B'));
 
     await tester.pumpWidget(
       ShadApp(
-        home: DeviceManagementPage(
-          settingsController: settingsController,
-          deviceController: deviceController,
+        builder: (_, child) => ScaffoldMessenger(child: child!),
+        home: Scaffold(
+          body: DeviceManagementPage(
+            settingsController: settings,
+            deviceController: devices,
+          ),
         ),
       ),
     );
-    await tester.pump();
 
-    expect(find.textContaining('Firmware: R029'), findsOneWidget);
+    expect(settings.scaleButtonStartsEspressoByDevice, isEmpty);
+    expect(find.text('Square button controls espresso'), findsNothing);
+    expect(find.byTooltip('Configure Skale A'), findsOneWidget);
+    expect(find.byTooltip('Configure Skale B'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Configure Skale A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Skale A settings'), findsOneWidget);
+    final toggle = find.widgetWithText(
+      SwitchListTile,
+      'Square button controls espresso',
+    );
+    expect(toggle, findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(settings.scaleButtonStartsEspressoByDevice, {'scale-a': true});
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Configure Skale B'));
+    await tester.pumpAndSettle();
     expect(
-      find.textContaining('Battery: 82% (device-reported)'),
-      findsOneWidget,
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(
+              SwitchListTile,
+              'Square button controls espresso',
+            ),
+          )
+          .value,
+      isFalse,
     );
-
-    discovery.clear();
-    final replacement = _InformationScale(
-      deviceId: 'skale-device',
-      firmwareVersion: 'R030',
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Square button controls espresso'),
     );
-    discovery.addDevice(replacement);
     await tester.pump();
+    expect(settings.scaleButtonStartsEspressoByDevice, {
+      'scale-a': true,
+      'scale-b': true,
+    });
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Configure Skale A'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Square button controls espresso'),
+    );
     await tester.pump();
+    expect(settings.scaleButtonStartsEspressoByDevice, {'scale-b': true});
 
-    expect(find.textContaining('Firmware: R030'), findsOneWidget);
-
-    replacement.emitFirmware('R031');
-    await tester.pump();
-
-    expect(find.textContaining('Firmware: R031'), findsOneWidget);
-
-    first.emitFirmware('stale');
-    await tester.pump();
-
-    expect(find.textContaining('Firmware: R031'), findsOneWidget);
-    expect(find.textContaining('Firmware: stale'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    deviceController.dispose();
+    devices.dispose();
     discovery.dispose();
+    settings.dispose();
   });
 }
