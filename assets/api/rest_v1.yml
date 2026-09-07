@@ -66,8 +66,6 @@ paths:
                         Remembered devices are those the user has connected to;
                         they persist across restarts until forgotten via
                         /api/v1/devices/forget.
-                    deviceInfo:
-                      $ref: '#/components/schemas/DeviceInformation'
         "500":
           description: Internal Server Error
           content:
@@ -1052,6 +1050,21 @@ paths:
           description: No machine connected or machine write queue full
 
   # Scale API
+  /api/v1/scale/info:
+    get:
+      summary: Get connected scale information
+      description: Returns metadata for the currently connected scale.
+      tags: [Scale]
+      responses:
+        "200":
+          description: Connected scale information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScaleInfo'
+        "503":
+          description: No scale is connected
+
   /api/v1/scale/tare:
     put:
       summary: Tare Scale
@@ -5429,6 +5442,16 @@ paths:
 
 components:
   schemas:
+    ScaleInfo:
+      type: object
+      properties:
+        firmwareVersion:
+          type: string
+        batteryLevel:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
     BleDiagnosticsSnapshot:
       type: object
       required: [timestamp, ble, connection]
