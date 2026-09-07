@@ -728,4 +728,4 @@ Bean and grinder management. See [`packages/dye2-plugin/README.md`](../packages/
 
 ### Scale information
 
-`GET /api/v1/scale/info` returns optional metadata for the currently connected scale, such as opaque `firmwareVersion` and nullable `batteryLevel`. It returns `503` when no scale is connected. Device inventory remains separate: `/api/v1/devices` and `/ws/v1/devices` describe discovery and connection state only and never include connection-scoped scale metadata.
+`GET /api/v1/scale/info` returns optional metadata for the currently connected scale, such as opaque `firmwareVersion`. It returns `503` when no scale is connected. Device inventory remains separate: `/api/v1/devices` and `/ws/v1/devices` describe discovery and connection state only and never include connection-scoped scale metadata.
