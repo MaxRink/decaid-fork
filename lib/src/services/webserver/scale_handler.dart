@@ -28,6 +28,8 @@ class ScaleHandler {
         return jsonOk({
           if (information?.firmwareVersion != null)
             'firmwareVersion': information!.firmwareVersion,
+          if (information?.batteryLevel != null)
+            'batteryLevel': information!.batteryLevel,
         });
       } on DeviceNotConnectedException {
         return jsonServiceUnavailable({'error': 'No scale connected'});
