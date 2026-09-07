@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/models/device/device.dart';
-import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -25,17 +24,21 @@ class DeviceManagementPage extends StatefulWidget {
 
 class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
+  final List<StreamSubscription<DeviceInformation?>>
+  _deviceInformationSubscriptions = [];
   List<Device> _devices = [];
 
   @override
   void initState() {
     super.initState();
     _devices = widget.deviceController.devices;
+    _syncDeviceInformationSubscriptions();
     _deviceSubscription = widget.deviceController.deviceStream.listen((
       devices,
     ) {
       if (mounted) {
         setState(() => _devices = devices);
+        _syncDeviceInformationSubscriptions();
       }
     });
   }
@@ -43,6 +46,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
   @override
   void dispose() {
     _deviceSubscription.cancel();
+    for (final subscription in _deviceInformationSubscriptions) {
+      subscription.cancel();
+    }
     super.dispose();
   }
 
@@ -147,12 +153,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
             ...devices.map(
               (device) => _buildDeviceRadio(
                 name: device.name,
-                subtitle: _truncatedId(device.deviceId),
+                subtitle: _deviceSubtitle(device),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
-                onConfigure: device is ScaleButtonCapable
-                    ? () => _showScaleSettings(device)
-                    : null,
               ),
             ),
         ],
@@ -160,12 +163,36 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     );
   }
 
+  void _syncDeviceInformationSubscriptions() {
+    for (final subscription in _deviceInformationSubscriptions) {
+      subscription.cancel();
+    }
+    _deviceInformationSubscriptions.clear();
+    for (final device in _devices.whereType<DeviceInformationCapable>()) {
+      _deviceInformationSubscriptions.add(
+        device.deviceInformation.skip(1).listen((_) {
+          if (mounted) setState(() {});
+        }),
+      );
+    }
+  }
+
+  String _deviceSubtitle(Device device) {
+    final lines = <String>[_truncatedId(device.deviceId)];
+    if (device case DeviceInformationCapable capable) {
+      final firmwareVersion = capable.currentDeviceInformation?.firmwareVersion;
+      if (firmwareVersion != null) {
+        lines.add('Firmware: $firmwareVersion');
+      }
+    }
+    return lines.join(' · ');
+  }
+
   Widget _buildDeviceRadio({
     required String name,
     required String subtitle,
     required bool isSelected,
     required VoidCallback onTap,
-    VoidCallback? onConfigure,
   }) {
     return InkWell(
       onTap: onTap,
@@ -201,44 +228,6 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                   Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
-            ),
-            if (onConfigure != null)
-              IconButton(
-                tooltip: 'Configure $name',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: onConfigure,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showScaleSettings(Device device) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => ListenableBuilder(
-        listenable: widget.settingsController,
-        builder: (context, _) => AlertDialog(
-          title: Text('${device.name} settings'),
-          content: SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Square button controls espresso'),
-            subtitle: const Text(
-              'Starts espresso on machines without an active group-head '
-              'controller, and stops active espresso on all machines. '
-              'The circle button always tares.',
-            ),
-            value: widget.settingsController.scaleButtonStartsEspressoForDevice(
-              device.deviceId,
-            ),
-            onChanged: (value) => widget.settingsController
-                .setScaleButtonStartsEspressoForDevice(device.deviceId, value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
             ),
           ],
         ),
