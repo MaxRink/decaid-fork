@@ -32,6 +32,8 @@ class PluginScale extends PluginProtocolDevice
   @override
   DeviceType get type => DeviceType.scale;
   @override
+  ScaleInfo? get scaleInfo => null;
+  @override
   bool get disconnectsToSleep =>
       capabilities.contains(PluginScaleCapability.disconnectToSleep);
   @override
