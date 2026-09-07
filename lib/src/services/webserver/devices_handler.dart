@@ -100,8 +100,6 @@ class DevicesStateAggregator {
       }
       final subscriptions = <StreamSubscription>[
         device.connectionState.skip(1).listen((_) => _emitState()),
-        if (device case final DeviceInformationCapable capable)
-          capable.deviceInformation.skip(1).listen((_) => _emitState()),
       ];
       _deviceStateSubs[device.deviceId] = (device, subscriptions);
     }
@@ -618,7 +616,6 @@ class DeviceListEntry {
   final DeviceType type;
   final ConnectionState state;
   final bool available;
-  final DeviceInformation? deviceInformation;
 
   const DeviceListEntry._({
     required this.id,
@@ -626,7 +623,6 @@ class DeviceListEntry {
     required this.type,
     required this.state,
     required this.available,
-    this.deviceInformation,
   });
 
   DeviceListEntry.live(Device device, ConnectionState state)
@@ -636,9 +632,6 @@ class DeviceListEntry {
         type: device.type,
         state: state,
         available: true,
-        deviceInformation: device is DeviceInformationCapable
-            ? (device as DeviceInformationCapable).currentDeviceInformation
-            : null,
       );
 
   DeviceListEntry.remembered(RememberedDevice r)
@@ -656,7 +649,6 @@ class DeviceListEntry {
     'state': state.name,
     'type': type.name,
     'available': available,
-    if (deviceInformation != null) 'deviceInfo': deviceInformation!.toJson(),
   };
 }
 
