@@ -231,13 +231,18 @@ class De1StateManager with WidgetsBindingObserver {
   }
 
   void _handleScaleButton(ScaleButton button) {
+    final scaleId = _scaleController.currentConnectedDeviceId;
+    _logger.info(
+      'Skale button received: ${button.name}; '
+      'device=$scaleId; '
+      'enabled=${scaleId == null ? false : _settingsController.scaleButtonStartsEspressoForDevice(scaleId)}; '
+      'state=${_latestSnapshot?.state.state.name}',
+    );
     if (_disposed || _scaleButtonActionInFlight) return;
     if (button == ScaleButton.circle) {
       unawaited(_tareFromScaleButton());
-    } else if (_scaleController.currentConnectedDeviceId != null &&
-        _settingsController.scaleButtonStartsEspressoForDevice(
-          _scaleController.currentConnectedDeviceId!,
-        )) {
+    } else if (scaleId != null &&
+        _settingsController.scaleButtonStartsEspressoForDevice(scaleId)) {
       unawaited(_toggleEspressoFromScaleButton());
     }
   }

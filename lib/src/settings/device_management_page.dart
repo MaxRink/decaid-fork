@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/models/device/device.dart';
+import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -156,7 +157,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 subtitle: _deviceSubtitle(device),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
-                onConfigure: device is UsbPowerConfigurable
+                onConfigure:
+                    device is UsbPowerConfigurable ||
+                        device is ScaleButtonCapable
                     ? () => _showScaleSettings(device)
                     : null,
               ),
@@ -260,18 +263,41 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
         listenable: widget.settingsController,
         builder: (context, _) => AlertDialog(
           title: Text('${device.name} settings'),
-          content: SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Powered by USB'),
-            subtitle: const Text(
-              'Enable when this Skale has external power. '
-              'Battery reporting is suppressed while enabled.',
-            ),
-            value: widget.settingsController.isSkalePoweredByUsb(
-              device.deviceId,
-            ),
-            onChanged: (value) => widget.settingsController
-                .setSkalePoweredByUsb(device.deviceId, value),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (device is ScaleButtonCapable)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Square button controls espresso'),
+                  subtitle: const Text(
+                    'Starts espresso on machines without an active group-head '
+                    'controller, and stops active espresso on all machines. '
+                    'The circle button always tares.',
+                  ),
+                  value: widget.settingsController
+                      .scaleButtonStartsEspressoForDevice(device.deviceId),
+                  onChanged: (value) => widget.settingsController
+                      .setScaleButtonStartsEspressoForDevice(
+                        device.deviceId,
+                        value,
+                      ),
+                ),
+              if (device is UsbPowerConfigurable)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Powered by USB'),
+                  subtitle: const Text(
+                    'Enable when this Skale has external power. '
+                    'Battery reporting is suppressed while enabled.',
+                  ),
+                  value: widget.settingsController.isSkalePoweredByUsb(
+                    device.deviceId,
+                  ),
+                  onChanged: (value) => widget.settingsController
+                      .setSkalePoweredByUsb(device.deviceId, value),
+                ),
+            ],
           ),
           actions: [
             TextButton(

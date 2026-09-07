@@ -29,6 +29,8 @@ class SettingsHandler {
       final blockOnNoScale = _controller.blockOnNoScale;
       final blockTareDuringShot = _controller.blockTareDuringShot;
       final stopHotWaterAtWeight = _controller.stopHotWaterAtWeight;
+      final scaleButtonStartsEspressoByDevice =
+          _controller.scaleButtonStartsEspressoByDevice;
       final preferredMachineId = _controller.preferredMachineId;
       final preferredScaleId = _controller.preferredScaleId;
       final skalePoweredByUsbByDevice = _controller.skalePoweredByUsbByDevice;
@@ -45,6 +47,7 @@ class SettingsHandler {
         'blockOnNoScale': blockOnNoScale,
         'blockTareDuringShot': blockTareDuringShot,
         'stopHotWaterAtWeight': stopHotWaterAtWeight,
+        'scaleButtonStartsEspressoByDevice': scaleButtonStartsEspressoByDevice,
         'preferredMachineId': preferredMachineId,
         'preferredScaleId': preferredScaleId,
         'skalePoweredByUsbByDevice': skalePoweredByUsbByDevice,
@@ -77,6 +80,12 @@ class SettingsHandler {
         return jsonBadRequest({
           'message':
               'skalePoweredByUsb was replaced by skalePoweredByUsbByDevice',
+        });
+      }
+      if (json.containsKey('scaleButtonStartsEspresso')) {
+        return jsonBadRequest({
+          'message':
+              'scaleButtonStartsEspresso was replaced by scaleButtonStartsEspressoByDevice',
         });
       }
       if (json.containsKey('gatewayMode')) {
@@ -169,6 +178,25 @@ class SettingsHandler {
             'message': 'stopHotWaterAtWeight must be a boolean',
           });
         }
+      }
+      if (json.containsKey('scaleButtonStartsEspressoByDevice')) {
+        final value = json['scaleButtonStartsEspressoByDevice'];
+        if (value is! Map) {
+          return jsonBadRequest({
+            'message': 'scaleButtonStartsEspressoByDevice must be an object',
+          });
+        }
+        final settings = <String, bool>{};
+        for (final entry in value.entries) {
+          if (entry.key is! String || entry.value is! bool) {
+            return jsonBadRequest({
+              'message':
+                  'scaleButtonStartsEspressoByDevice must map device IDs to booleans',
+            });
+          }
+          settings[entry.key as String] = entry.value as bool;
+        }
+        await _controller.setScaleButtonStartsEspressoByDevice(settings);
       }
       if (json.containsKey('preferredMachineId')) {
         final value = json['preferredMachineId'];

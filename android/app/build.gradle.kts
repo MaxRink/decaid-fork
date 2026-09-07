@@ -1,10 +1,5 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    id("com.google.firebase.firebase-perf")
-    id("com.google.firebase.crashlytics")
-    // END: FlutterFire Configuration
     // id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -28,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "net.tadel.reaprime"
+        applicationId = "net.tadel.reaprime.review"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 28
@@ -43,13 +38,13 @@ android {
 
     signingConfigs {
             create("release") {
-                storeFile = file("debug.keystore")
+                storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "android"
                 keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "androiddebugkey"
                 keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: "android"
             }
             getByName("debug") {
-                storeFile = file("debug.keystore")
+                storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
@@ -69,7 +64,5 @@ android {
 flutter {
     source = "../.."
 }
-
-
 
 
