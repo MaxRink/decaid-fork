@@ -871,8 +871,6 @@ components:
             /api/v1/devices/forget endpoint. Availability does not imply command
             ownership; controller-owned devices may be inventory-only.
           example: true
-        deviceInfo:
-          $ref: '#/components/schemas/DeviceInformation'
 
     DeviceInformation:
       type: object
