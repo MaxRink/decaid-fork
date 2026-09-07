@@ -34,8 +34,7 @@ class ScaleInfo {
   Map<String, dynamic> toJson() => {
     if (firmwareVersion != null) 'firmwareVersion': firmwareVersion,
     if (batteryLevel != null) 'batteryLevel': batteryLevel,
-    };
-  }
+  };
 }
 
 abstract interface class TransportHandoffScale {
