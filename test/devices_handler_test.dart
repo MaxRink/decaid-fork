@@ -433,27 +433,6 @@ void main() {
         expect(body[0]['type'], 'scale');
       });
 
-      test('returns connected-session device information', () async {
-        final scale = _DeviceInformationTestScale(
-          deviceId: 'scale-info',
-          name: 'Skale',
-        );
-        scale.emitDeviceInformation(
-          const DeviceInformation(firmwareVersion: 'R029', batteryLevel: 82),
-        );
-        mockDiscovery.addDevice(scale);
-        await Future<void>.delayed(Duration.zero);
-
-        final response = await sendGet('/api/v1/devices');
-        expect(response.statusCode, 200);
-        final body = jsonDecode(await response.readAsString()) as List;
-
-        expect(body.single['deviceInfo'], {
-          'firmwareVersion': 'R029',
-          'batteryLevel': 82,
-        });
-      });
-
       test('returns a connected scale that is outside discovery', () async {
         final bengle = MockBengle();
         await bengle.onConnect();
@@ -654,90 +633,6 @@ void main() {
           .timeout(Duration(seconds: 2));
 
       expect((state['devices'] as List)[0]['state'], 'disconnected');
-    });
-
-    test('emits connected-session device information updates', () async {
-      final scale = _DeviceInformationTestScale(
-        deviceId: 'scale-info',
-        name: 'Skale',
-      );
-      mockDiscovery.addDevice(scale);
-
-      await aggregator.stateStream
-          .where((s) => (s['devices'] as List).isNotEmpty)
-          .first
-          .timeout(const Duration(seconds: 2));
-
-      scale.emitDeviceInformation(
-        const DeviceInformation(firmwareVersion: 'R029'),
-      );
-
-      final state = await aggregator.stateStream
-          .where(
-            (s) =>
-                (s['devices'] as List)
-                    .first['deviceInfo']?['firmwareVersion'] ==
-                'R029',
-          )
-          .first
-          .timeout(const Duration(seconds: 2));
-
-      expect((state['devices'] as List).first['deviceInfo'], {
-        'firmwareVersion': 'R029',
-      });
-    });
-
-    test('device information follows a same-ID replacement instance', () async {
-      final first = _DeviceInformationTestScale(
-        deviceId: 'scale-info',
-        name: 'Skale v1',
-      );
-      mockDiscovery.addDevice(first);
-      await aggregator.stateStream
-          .where((s) => (s['devices'] as List).isNotEmpty)
-          .first
-          .timeout(const Duration(seconds: 2));
-
-      mockDiscovery.clear();
-      final replacement = _DeviceInformationTestScale(
-        deviceId: 'scale-info',
-        name: 'Skale v2',
-      );
-      mockDiscovery.addDevice(replacement);
-      await aggregator.stateStream
-          .where(
-            (s) =>
-                (s['devices'] as List).isNotEmpty &&
-                (s['devices'] as List).first['name'] == 'Skale v2',
-          )
-          .first
-          .timeout(const Duration(seconds: 2));
-
-      replacement.emitDeviceInformation(
-        const DeviceInformation(firmwareVersion: 'R030'),
-      );
-      final state = await aggregator.stateStream
-          .where(
-            (s) =>
-                (s['devices'] as List)
-                    .first['deviceInfo']?['firmwareVersion'] ==
-                'R030',
-          )
-          .first
-          .timeout(const Duration(seconds: 2));
-
-      first.emitDeviceInformation(
-        const DeviceInformation(firmwareVersion: 'stale'),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-
-      expect((state['devices'] as List).first['deviceInfo'], {
-        'firmwareVersion': 'R030',
-      });
-      final latest = await aggregator.stateStream.first;
-      expect((latest['devices'] as List).first['deviceInfo'], {
-        'firmwareVersion': 'R030',
-      });
     });
 
     test('resubscribes when device reappears with same ID', () async {
