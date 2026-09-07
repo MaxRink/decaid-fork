@@ -321,3 +321,7 @@ behavior is documented.
 | 429 | Admission capacity full (8 active or queued requests) |
 | 500 | A required direct machine write failed, or no machine was ever connected |
 | 503 | Mutation timed out waiting for its execution turn, the 32-entry DE1 pending queue is full, or the same machine did not return within the bounded wait for a replaceable workflow write |
+
+## Inventory versus role information
+
+`GET /api/v1/devices` and `/ws/v1/devices` are inventory/discovery surfaces. They may include connected, available, and remembered-absent devices, so they must not carry connection-scoped metadata. Information learned from the currently connected scale belongs at `GET /api/v1/scale/info`, using the generic `ScaleInfo` contract. No scale-info WebSocket is defined until a concrete live-update need exists.

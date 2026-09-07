@@ -66,8 +66,6 @@ paths:
                         Remembered devices are those the user has connected to;
                         they persist across restarts until forgotten via
                         /api/v1/devices/forget.
-                    deviceInfo:
-                      $ref: '#/components/schemas/DeviceInformation'
         "500":
           description: Internal Server Error
           content:
@@ -1052,6 +1050,21 @@ paths:
           description: No machine connected or machine write queue full
 
   # Scale API
+  /api/v1/scale/info:
+    get:
+      summary: Get connected scale information
+      description: Returns metadata for the currently connected scale.
+      tags: [Scale]
+      responses:
+        "200":
+          description: Connected scale information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScaleInfo'
+        "503":
+          description: No scale is connected
+
   /api/v1/scale/tare:
     put:
       summary: Tare Scale
@@ -5444,15 +5457,17 @@ components:
           additionalProperties: true
       additionalProperties: true
 
-    DeviceInformation:
+    ScaleInfo:
       type: object
-      description: Optional metadata reported for the current device connection.
       properties:
         firmwareVersion:
           type: string
-          description: Opaque firmware revision reported by the connected device.
-          example: R029
-
+          description: Opaque scale firmware version, when reported.
+        batteryLevel:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
     FlowSmoothingConfig:
       type: object
       required: [windowMs, movingAverageSamples]
