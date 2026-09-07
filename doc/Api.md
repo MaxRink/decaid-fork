@@ -111,7 +111,7 @@ Pre-stream responses are `400` for malformed input, `404` for an unknown artifac
 | PUT | `/api/v1/scale/timer/stop` | Stop scale timer | |
 | PUT | `/api/v1/scale/timer/reset` | Reset scale timer | |
 
-`GET /api/v1/scale/info` is scoped to the currently connected scale. It returns `503` when no scale is connected and `{}` when connected metadata is not yet known. `firmwareVersion`, when present, is an opaque value reported by the scale (for example `R029`). This endpoint is separate from device inventory.
+`GET /api/v1/scale/info` is scoped to the currently connected scale. It returns `503` when no scale is connected and `{}` when connected metadata is not yet known. `firmwareVersion`, when present, is an opaque value reported by the scale (for example `R029`). `batteryLevel` is optional and nullable; unknown values are omitted, while `0` and `100` are valid readings. This endpoint is separate from device inventory.
 
 ### Devices
 
@@ -725,7 +725,3 @@ Built-in settings dashboard accessible at `/api/v1/plugins/settings.reaplugin/ui
 ### DYE2 Plugin (`dye2.reaplugin`)
 
 Bean and grinder management. See [`packages/dye2-plugin/README.md`](../packages/dye2-plugin/README.md).
-
-### Scale information
-
-`GET /api/v1/scale/info` returns optional metadata for the currently connected scale, such as opaque `firmwareVersion`. It returns `503` when no scale is connected. Device inventory remains separate: `/api/v1/devices` and `/ws/v1/devices` describe discovery and connection state only and never include connection-scoped scale metadata.

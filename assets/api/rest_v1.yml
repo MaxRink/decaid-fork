@@ -5442,6 +5442,16 @@ paths:
 
 components:
   schemas:
+    ScaleInfo:
+      type: object
+      properties:
+        firmwareVersion:
+          type: string
+        batteryLevel:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
     BleDiagnosticsSnapshot:
       type: object
       required: [timestamp, ble, connection]
@@ -5457,12 +5467,22 @@ components:
           additionalProperties: true
       additionalProperties: true
 
-    ScaleInfo:
+    DeviceInformation:
       type: object
+      description: Optional metadata reported for the current device connection.
       properties:
         firmwareVersion:
           type: string
-          description: Opaque scale firmware version, when reported.
+          description: Opaque firmware revision reported by the connected device.
+          example: R029
+        batteryLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Device-reported battery percentage, when available.
+          example: 82
+
     FlowSmoothingConfig:
       type: object
       required: [windowMs, movingAverageSamples]

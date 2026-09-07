@@ -53,30 +53,27 @@ void main() {
     });
   });
 
-  test('returns opaque firmwareVersion when present', () async {
-    final scale = _InfoScale(const ScaleInfo(firmwareVersion: 'R029'));
-    addTearDown(scale.dispose);
-    final controller = _FixedScaleController(scale);
-    addTearDown(controller.dispose);
+  test('returns opaque firmwareVersion and optional batteryLevel', () async {
+    for (final batteryLevel in [null, 0, 100]) {
+      final scale = _InfoScale(
+        ScaleInfo(firmwareVersion: 'R029', batteryLevel: batteryLevel),
+      );
+      addTearDown(scale.dispose);
+      final controller = _FixedScaleController(scale);
+      addTearDown(controller.dispose);
 
-    final response = await requestInfo(controller);
+      final response = await requestInfo(controller);
+      final json =
+          jsonDecode(await response.readAsString()) as Map<String, dynamic>;
 
-    expect(response.statusCode, 200);
-    expect(jsonDecode(await response.readAsString()), {
-      'firmwareVersion': 'R029',
-    });
-  });
-
-  test('omits firmwareVersion when connected metadata is unknown', () async {
-    final scale = _InfoScale(const ScaleInfo());
-    addTearDown(scale.dispose);
-    final controller = _FixedScaleController(scale);
-    addTearDown(controller.dispose);
-
-    final response = await requestInfo(controller);
-
-    expect(response.statusCode, 200);
-    expect(jsonDecode(await response.readAsString()), isEmpty);
+      expect(response.statusCode, 200);
+      expect(json['firmwareVersion'], 'R029');
+      if (batteryLevel == null) {
+        expect(json.containsKey('batteryLevel'), isFalse);
+      } else {
+        expect(json['batteryLevel'], batteryLevel);
+      }
+    }
   });
 }
 
