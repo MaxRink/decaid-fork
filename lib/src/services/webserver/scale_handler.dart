@@ -24,8 +24,6 @@ class ScaleHandler {
         return jsonOk(_controller.connectedScale().scaleInfo?.toJson() ?? {});
       } on DeviceNotConnectedException {
         return jsonServiceUnavailable({'error': 'No scale connected'});
-      } catch (e) {
-        return jsonError({'error': e.toString()});
       }
     });
     app.put('/api/v1/scale/<command>', (request, command) async {
