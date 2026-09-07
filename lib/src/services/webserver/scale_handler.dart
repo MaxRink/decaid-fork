@@ -24,8 +24,6 @@ class ScaleHandler {
         return jsonOk(_controller.connectedScale().scaleInfo?.toJson() ?? {});
       } on DeviceNotConnectedException {
         return jsonServiceUnavailable({'error': 'No scale connected'});
-      } catch (e) {
-        return jsonError({'error': e.toString()});
       }
     });
     app.put('/api/v1/scale/<command>', (request, command) async {
@@ -51,6 +49,7 @@ class ScaleHandler {
           try {
             await _controller.tare();
           } catch (e) {
+            _log.warning('tare command failed', e);
             return jsonError({'error': e.toString()});
           }
           return jsonOk(null);
@@ -78,6 +77,7 @@ class ScaleHandler {
             return jsonNotFound({'error': 'Unknown command: $command'});
         }
       } catch (e) {
+        _log.warning('timer $command command failed', e);
         return jsonError({'error': e.toString()});
       }
     });
