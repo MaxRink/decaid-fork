@@ -10,7 +10,7 @@ class DevicesStateAggregator {
 
   final List<StreamSubscription> _subscriptions = [];
 
-  final Map<String, (Device, StreamSubscription)> _deviceStateSubs = {};
+  final Map<String, (Device, List<StreamSubscription>)> _deviceStateSubs = {};
 
   final BehaviorSubject<Map<String, dynamic>> _stateStream =
       BehaviorSubject<Map<String, dynamic>>();
@@ -83,7 +83,9 @@ class DevicesStateAggregator {
         .where((id) => !currentIds.contains(id))
         .toList();
     for (final id in staleIds) {
-      _deviceStateSubs.remove(id)?.$2.cancel();
+      for (final subscription in _deviceStateSubs.remove(id)?.$2 ?? const []) {
+        subscription.cancel();
+      }
     }
 
     for (final device in devices) {
@@ -92,10 +94,14 @@ class DevicesStateAggregator {
         if (identical(existing.$1, device)) {
           continue;
         }
-        existing.$2.cancel();
+        for (final subscription in existing.$2) {
+          subscription.cancel();
+        }
       }
-      final sub = device.connectionState.skip(1).listen((_) => _emitState());
-      _deviceStateSubs[device.deviceId] = (device, sub);
+      final subscriptions = <StreamSubscription>[
+        device.connectionState.skip(1).listen((_) => _emitState()),
+      ];
+      _deviceStateSubs[device.deviceId] = (device, subscriptions);
     }
   }
 
@@ -179,7 +185,9 @@ class DevicesStateAggregator {
     }
     _subscriptions.clear();
     for (final entry in _deviceStateSubs.values) {
-      entry.$2.cancel();
+      for (final subscription in entry.$2) {
+        subscription.cancel();
+      }
     }
     _deviceStateSubs.clear();
     _stateStream.close();
