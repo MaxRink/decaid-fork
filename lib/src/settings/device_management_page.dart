@@ -25,7 +25,7 @@ class DeviceManagementPage extends StatefulWidget {
 class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
   final List<StreamSubscription<DeviceInformation?>>
-      _deviceInformationSubscriptions = [];
+  _deviceInformationSubscriptions = [];
   List<Device> _devices = [];
 
   @override
