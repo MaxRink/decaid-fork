@@ -50,7 +50,6 @@ void main() {
       expect(settings['scalePowerMode'], 'disabled');
       expect(settings['blockTareDuringShot'], isFalse);
       expect(settings['stopHotWaterAtWeight'], isTrue);
-      expect(settings['scaleButtonStartsEspressoByDevice'], isEmpty);
       expect(settings['automaticUpdateCheck'], isTrue);
       expect(settings['chargingMode'], 'disabled');
       expect(settings['nightModeEnabled'], isFalse);
@@ -60,6 +59,7 @@ void main() {
       expect(settings['sleepTimeoutMinutes'], 30);
       expect(settings['lowBatteryBrightnessLimit'], isFalse);
       expect(settings['keepAwake'], isTrue);
+      expect(settings['skalePoweredByUsbByDevice'], isEmpty);
       expect(map['wakeSchedules'], '[]');
 
       final devicePrefs = map['devicePreferences'] as Map<String, dynamic>;
@@ -89,10 +89,10 @@ void main() {
       await controller.setStopHotWaterAtWeight(false);
       await controller.setHotWaterFlowMultiplier(0.5);
       await controller.setBlockTareDuringShot(true);
-      await controller.setScaleButtonStartsEspressoForDevice('scale-a', true);
-      await controller.setScaleButtonStartsEspressoForDevice('scale-b', true);
       await controller.setLowBatteryBrightnessLimit(true);
       await controller.setKeepAwake(false);
+      await controller.setSkalePoweredByUsb('skale-a', true);
+      await controller.setSkalePoweredByUsb('skale-b', false);
       final exported = await exportSettings(section);
 
       await controller.updateGatewayMode(GatewayMode.disabled);
@@ -101,8 +101,6 @@ void main() {
       await controller.setStopHotWaterAtWeight(true);
       await controller.setHotWaterFlowMultiplier(0.3);
       await controller.setBlockTareDuringShot(false);
-      await controller.setScaleButtonStartsEspressoForDevice('scale-a', false);
-      await controller.setScaleButtonStartsEspressoForDevice('scale-b', false);
       await controller.setLowBatteryBrightnessLimit(false);
       await controller.setKeepAwake(true);
 
@@ -119,12 +117,9 @@ void main() {
       expect(controller.stopHotWaterAtWeight, isFalse);
       expect(controller.hotWaterFlowMultiplier, 0.5);
       expect(controller.blockTareDuringShot, isTrue);
-      expect(controller.scaleButtonStartsEspressoByDevice, {
-        'scale-a': true,
-        'scale-b': true,
-      });
       expect(controller.lowBatteryBrightnessLimit, isTrue);
       expect(controller.keepAwake, isFalse);
+      expect(controller.skalePoweredByUsbByDevice, {'skale-a': true});
     });
 
     test('imports device preferences', () async {
@@ -180,20 +175,36 @@ void main() {
       expect(result.errors[1], contains('Invalid scalePowerMode'));
     });
 
-    test('rejects a non-boolean scale button setting', () async {
+    test('imports independent per-device USB power settings', () async {
       final result = await importSectionJson(
         section,
-        '{"settings":{"scaleButtonStartsEspressoByDevice":{"scale-a":"yes"}}}',
+        jsonEncode({
+          'settings': {
+            'skalePoweredByUsbByDevice': {'skale-a': true, 'skale-b': false},
+          },
+        }),
         ConflictStrategy.overwrite,
       );
-
-      expect(controller.scaleButtonStartsEspressoByDevice, isEmpty);
-      expect(result.errors, hasLength(1));
-      expect(
-        result.errors.single,
-        contains('Invalid scaleButtonStartsEspressoByDevice'),
-      );
+      expect(result.errors, isEmpty);
+      expect(controller.skalePoweredByUsbByDevice, {'skale-a': true});
     });
+
+    test(
+      'reports an error for invalid per-device USB power settings',
+      () async {
+        final result = await importSectionJson(
+          section,
+          jsonEncode({
+            'settings': {
+              'skalePoweredByUsbByDevice': {'skale-a': 'yes'},
+            },
+          }),
+          ConflictStrategy.overwrite,
+        );
+        expect(result.errors, [contains('Invalid skalePoweredByUsbByDevice')]);
+        expect(controller.skalePoweredByUsbByDevice, isEmpty);
+      },
+    );
 
     test('counts settings imported before a later field fails', () async {
       final result = await importSectionJson(

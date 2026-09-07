@@ -29,10 +29,9 @@ class SettingsHandler {
       final blockOnNoScale = _controller.blockOnNoScale;
       final blockTareDuringShot = _controller.blockTareDuringShot;
       final stopHotWaterAtWeight = _controller.stopHotWaterAtWeight;
-      final scaleButtonStartsEspressoByDevice =
-          _controller.scaleButtonStartsEspressoByDevice;
       final preferredMachineId = _controller.preferredMachineId;
       final preferredScaleId = _controller.preferredScaleId;
+      final skalePoweredByUsbByDevice = _controller.skalePoweredByUsbByDevice;
       final defaultSkinId = _controller.defaultSkinId;
       final automaticUpdateCheck = _controller.automaticUpdateCheck;
       final result = <String, dynamic>{
@@ -46,9 +45,9 @@ class SettingsHandler {
         'blockOnNoScale': blockOnNoScale,
         'blockTareDuringShot': blockTareDuringShot,
         'stopHotWaterAtWeight': stopHotWaterAtWeight,
-        'scaleButtonStartsEspressoByDevice': scaleButtonStartsEspressoByDevice,
         'preferredMachineId': preferredMachineId,
         'preferredScaleId': preferredScaleId,
+        'skalePoweredByUsbByDevice': skalePoweredByUsbByDevice,
         'defaultSkinId': defaultSkinId,
         'automaticUpdateCheck': automaticUpdateCheck,
         'chargingMode': _controller.chargingMode.name,
@@ -74,10 +73,10 @@ class SettingsHandler {
         maxBytes: largeRequestBodyBytes,
       );
       Map<String, dynamic> json = jsonDecode(payload);
-      if (json.containsKey('scaleButtonStartsEspresso')) {
+      if (json.containsKey('skalePoweredByUsb')) {
         return jsonBadRequest({
           'message':
-              'scaleButtonStartsEspresso was replaced by scaleButtonStartsEspressoByDevice',
+              'skalePoweredByUsb was replaced by skalePoweredByUsbByDevice',
         });
       }
       if (json.containsKey('gatewayMode')) {
@@ -170,25 +169,6 @@ class SettingsHandler {
             'message': 'stopHotWaterAtWeight must be a boolean',
           });
         }
-      }
-      if (json.containsKey('scaleButtonStartsEspressoByDevice')) {
-        final value = json['scaleButtonStartsEspressoByDevice'];
-        if (value is! Map) {
-          return jsonBadRequest({
-            'message': 'scaleButtonStartsEspressoByDevice must be an object',
-          });
-        }
-        final settings = <String, bool>{};
-        for (final entry in value.entries) {
-          if (entry.key is! String || entry.value is! bool) {
-            return jsonBadRequest({
-              'message':
-                  'scaleButtonStartsEspressoByDevice must map device IDs to booleans',
-            });
-          }
-          settings[entry.key as String] = entry.value as bool;
-        }
-        await _controller.setScaleButtonStartsEspressoByDevice(settings);
       }
       if (json.containsKey('preferredMachineId')) {
         final value = json['preferredMachineId'];
@@ -290,6 +270,26 @@ class SettingsHandler {
         } else {
           return jsonBadRequest({'message': 'keepAwake must be a boolean'});
         }
+      }
+      if (json.containsKey('skalePoweredByUsbByDevice')) {
+        final value = json['skalePoweredByUsbByDevice'];
+        if (value is! Map) {
+          return jsonBadRequest({
+            'message':
+                'skalePoweredByUsbByDevice must be an object with boolean values',
+          });
+        }
+        final parsed = <String, bool>{};
+        for (final entry in value.entries) {
+          if (entry.key is! String || entry.value is! bool) {
+            return jsonBadRequest({
+              'message':
+                  'skalePoweredByUsbByDevice must be an object with boolean values',
+            });
+          }
+          parsed[entry.key as String] = entry.value as bool;
+        }
+        await _controller.setSkalePoweredByUsbByDevice(parsed);
       }
       if (json.containsKey('simulatedDevices')) {
         final value = json['simulatedDevices'];

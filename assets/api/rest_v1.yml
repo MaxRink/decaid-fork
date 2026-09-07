@@ -5482,6 +5482,14 @@ components:
           nullable: true
           description: Device-reported battery percentage, when available.
           example: 82
+        powerSource:
+          type: string
+          enum: [usb]
+          description: Current power source, when known.
+        powerSourceProvenance:
+          type: string
+          enum: [manualOverride]
+          description: Whether the power source was reported by the device or selected manually.
 
     FlowSmoothingConfig:
       type: object
@@ -6468,11 +6476,6 @@ components:
         stopHotWaterAtWeight:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine). Set false to use only the machine's native volume/time stop.
           type: boolean
-        scaleButtonStartsEspressoByDevice:
-          description: Per-device setting controlling whether a connected Skale square-button press requests espresso from idle or sleeping on machines without an active group-head controller, or stops active espresso on any machine. Active-GHC machines require operations to start at the group head. Keys are exact scale device IDs; enabled IDs are stored and returned with true values, while absent IDs are disabled.
-          type: object
-          additionalProperties:
-            type: boolean
         preferredMachineId:
           description: Device ID of the preferred machine for auto-connect on startup. When set, REA will automatically connect to this machine when it's discovered during device scan. Set to null to clear the preference.
           type: string
@@ -6483,6 +6486,11 @@ components:
           type: string
           nullable: true
           example: "AA:BB:CC:DD:EE:FF"
+        skalePoweredByUsbByDevice:
+          description: Exact Skale device IDs mapped to manual USB power declarations. Boolean values are accepted; false removes the device ID. Only enabled IDs are stored and returned. Omitted IDs default to false; enabled devices suppress battery reads and report the USB source with manual provenance.
+          type: object
+          additionalProperties:
+            type: boolean
         defaultSkinId:
           description: ID of the default WebUI skin to serve
           type: string
@@ -6571,11 +6579,6 @@ components:
         stopHotWaterAtWeight:
           description: When true (default) and a scale is connected, hot water dispensing tares the scale and stops at the configured hot-water volume target treated as grams. The machine's own volume/time stop remains a backstop. Ignored in full gateway mode (a skin owns the machine).
           type: boolean
-        scaleButtonStartsEspressoByDevice:
-          description: Per-device Skale square-button espresso control settings, keyed by exact scale device ID. Starts are supported only on machines without an active group-head controller; stops remain supported on all machines. Enabled IDs are returned with true values; missing IDs are disabled.
-          type: object
-          additionalProperties:
-            type: boolean
         preferredMachineId:
           description: Device ID of the preferred machine for auto-connect on startup. Returns null if no preferred device is set.
           type: string
@@ -6586,6 +6589,11 @@ components:
           type: string
           nullable: true
           example: "AA:BB:CC:DD:EE:FF"
+        skalePoweredByUsbByDevice:
+          description: Exact Skale device IDs mapped to manual USB power declarations. Only enabled IDs are returned; omitted IDs default to false.
+          type: object
+          additionalProperties:
+            type: boolean
         defaultSkinId:
           description: ID of the default WebUI skin being served
           type: string

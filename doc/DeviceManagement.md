@@ -178,24 +178,6 @@ Machine replacement/disconnect resets the push state so the new machine gets
 - **Construction:** Like the USB HDS path, the service constructs `HDSWifi` **directly**, bypassing the BLE-coupled `DeviceMatcher`.
 - **Platform config:** iOS/macOS `Info.plist` declare `NSBonjourServices` (`_decentscale._tcp`) + `NSLocalNetworkUsageDescription` (without these, Apple silently returns no results); macOS already grants the `com.apple.security.network.client` entitlement. Linux discovery requires the **Avahi daemon** running; otherwise use manual entry.
 
-### Skale button actions
-
-Skale button notifications are exposed through `ScaleButtonCapable` and
-forwarded by `ScaleController`. The circle button always requests a tare. The
-square button is opt-in per exact device ID
-(`scaleButtonStartsEspressoByDevice`, default off). It requests espresso from
-idle or sleeping only on machines without an active group-head controller,
-because active-GHC machines require operations to start at the group head for
-UL compliance. It requests idle to stop active espresso on all machines. Native
-Device Management keeps a settings gear on every capable Skale row; each popup
-reads and writes only that row's device setting. REST and settings export/import
-use the same device-ID keyed object.
-Notifications are serialized and ignored after scale disconnect or replacement;
-other machine states and missing machines have no action.
-When enabled, these physical-button actions remain active while Decaid's app
-service is connected, including when the app is in the background; gateway mode
-`full` remains excluded because the skin owns machine actions.
-
 ### Device Matching
 
 Discovery services use name-based matching via `DeviceMatcher` to create appropriate device instances from BLE advertisement names:
@@ -847,6 +829,16 @@ on connect and every 30 minutes while connected. Only a single-byte value in
 the device-reported `0..100` range is published; unavailable or invalid reads
 clear the connected-session value. Battery metadata is nullable and appears in
 the Devices UI and nested REST/WebSocket `deviceInfo` object when available.
+
+Each connected USB-configurable Skale row in Settings > Devices provides an
+opt-in `skalePoweredByUsbByDevice` override through its settings button. Values
+are keyed by exact device ID, default to `false`, and are persisted and
+exported. This is a manual power-source declaration for each Skale device;
+while enabled, that device's battery reads and refresh polling stop, its
+battery value is cleared, and metadata reports `powerSource: usb` with
+`powerSourceProvenance: manualOverride`. Disabling it immediately resumes a
+battery read and the normal refresh interval. Other scale implementations and
+other Skale devices are unaffected.
 
 ### Bengle integrated scale
 
