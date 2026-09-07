@@ -98,7 +98,6 @@ class Skale2Scale implements Scale, DeviceInformationCapable {
     if (info == null) return null;
     return ScaleInfo(
       firmwareVersion: info.firmwareVersion,
-      batteryLevel: _batteryLevel,
     );
   }
 
