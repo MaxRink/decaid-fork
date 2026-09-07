@@ -322,6 +322,9 @@ behavior is documented.
 | 500 | A required direct machine write failed, or no machine was ever connected |
 | 503 | Mutation timed out waiting for its execution turn, the 32-entry DE1 pending queue is full, or the same machine did not return within the bounded wait for a replaceable workflow write |
 
-## Inventory versus role information
+## Device inventory and connected-scale metadata
 
-`GET /api/v1/devices` and `/ws/v1/devices` are inventory/discovery surfaces. They may include connected, available, and remembered-absent devices, so they must not carry connection-scoped metadata. Information learned from the currently connected scale belongs at `GET /api/v1/scale/info`, using the generic `ScaleInfo` contract. No scale-info WebSocket is defined until a concrete live-update need exists.
+- `GET /api/v1/devices` and `/ws/v1/devices` are inventory-only surfaces. They must not include connection-scoped metadata such as `deviceInfo`, `firmwareVersion`, or `batteryLevel`.
+- Metadata refreshes do not emit inventory updates. Do not add a metadata WebSocket until a concrete live-update need exists.
+- `GET /api/v1/scale/info` reports only the currently connected scale. Disconnected requests return `503`; a connected scale with unknown metadata returns `{}`. `firmwareVersion` is optional and opaque.
+- Keep connected-scale metadata separate from remembered-device inventory state; use the scale-info endpoint for it.
