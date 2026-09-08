@@ -813,10 +813,11 @@ of vanishing. Cross-transport (BLE/USB/WiFi) by construction.
 ### Connected-session device information
 
 Devices may implement the optional `DeviceInformationCapable` interface for
-connected-session metadata. The devices REST and WebSocket inventories follow
-that stream and include a nested `deviceInfo` object when data is available.
-The Devices page follows the same stream and replaces subscriptions when a
-same-ID device instance is rebuilt during reconnect.
+connected-session metadata. The Devices page follows that stream and replaces
+subscriptions when a same-ID device instance is rebuilt during reconnect.
+REST clients read connected-scale metadata from `GET /api/v1/scale/info`.
+The `/api/v1/devices` and `/ws/v1/devices` inventories remain inventory-only:
+they do not include `deviceInfo` or emit updates for metadata refreshes.
 
 Skale reads the standard Device Information Firmware Revision String
 (`0x180A` / `0x2A26`) as best-effort metadata after service discovery. Missing,

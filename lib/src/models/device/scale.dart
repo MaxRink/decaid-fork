@@ -17,13 +17,11 @@ abstract class Scale extends Device {
 
 class ScaleInfo {
   final String? firmwareVersion;
-  final int? batteryLevel;
 
-  const ScaleInfo({this.firmwareVersion, this.batteryLevel});
+  const ScaleInfo({this.firmwareVersion});
 
   Map<String, dynamic> toJson() => {
     if (firmwareVersion != null) 'firmwareVersion': firmwareVersion,
-    if (batteryLevel != null) 'batteryLevel': batteryLevel,
   };
 }
 
