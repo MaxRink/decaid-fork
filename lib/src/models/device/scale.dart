@@ -15,7 +15,6 @@ abstract class Scale extends Device {
   Future<void> resetTimer() async {}
 }
 
-
 class ScaleInfo {
   final String? firmwareVersion;
   final int? batteryLevel;
