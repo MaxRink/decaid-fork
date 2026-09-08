@@ -15,7 +15,8 @@ import 'package:reaprime/src/models/device/device.dart';
 
 import '../../scale.dart';
 
-class Skale2Scale implements Scale, DeviceInformationCapable, ScaleButtonCapable {
+class Skale2Scale
+    implements Scale, DeviceInformationCapable, ScaleButtonCapable {
   static final BleServiceIdentifier serviceIdentifier =
       BleServiceIdentifier.short('ff08');
   static final BleServiceIdentifier weightCharacteristic =
