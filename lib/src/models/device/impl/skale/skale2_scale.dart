@@ -96,9 +96,7 @@ class Skale2Scale implements Scale, DeviceInformationCapable {
   ScaleInfo? get scaleInfo {
     final info = currentDeviceInformation;
     if (info == null) return null;
-    return ScaleInfo(
-      firmwareVersion: info.firmwareVersion,
-    );
+    return ScaleInfo(firmwareVersion: info.firmwareVersion);
   }
 
   @override
