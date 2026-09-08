@@ -844,7 +844,8 @@ Skale also reads the standard Battery Level characteristic (`0x180F` / `0x2A19`)
 on connect and every 30 minutes while connected. Only a single-byte value in
 the device-reported `0..100` range is published; unavailable or invalid reads
 clear the connected-session value. Battery metadata is nullable and appears in
-the Devices UI and nested REST/WebSocket `deviceInfo` object when available.
+the Devices UI and the connected-scale `GET /api/v1/scale/info` response when
+available.
 
 ### Bengle integrated scale
 
