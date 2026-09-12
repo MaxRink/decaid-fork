@@ -26,13 +26,16 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
   final List<StreamSubscription<DeviceInformation?>>
   _deviceInformationSubscriptions = [];
+  late StreamSubscription<bool> _scanningSubscription;
   List<Device> _devices = [];
+  bool _scanning = false;
 
   @override
   void initState() {
     super.initState();
     _devices = widget.deviceController.devices;
     _syncDeviceInformationSubscriptions();
+    _scanning = widget.deviceController.isScanning;
     _deviceSubscription = widget.deviceController.deviceStream.listen((
       devices,
     ) {
@@ -41,6 +44,19 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
         _syncDeviceInformationSubscriptions();
       }
     });
+    _scanningSubscription = widget.deviceController.scanningStream.listen((
+      scanning,
+    ) {
+      if (mounted) {
+        setState(() => _scanning = scanning);
+      }
+    });
+    // A device that has never connected is not in the list, and the dosing
+    // scale is chosen by hand rather than remembered on connect -- so without
+    // a scan there would be nothing to choose from.
+    if (_devices.isEmpty && !_scanning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scan());
+    }
   }
 
   @override
@@ -49,7 +65,19 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     for (final subscription in _deviceInformationSubscriptions) {
       subscription.cancel();
     }
+    _scanningSubscription.cancel();
     super.dispose();
+  }
+
+  Future<void> _scan() async {
+    if (_scanning) return;
+    try {
+      // Discovery only: connecting here would hand a scale to brewing before
+      // the user has said which one weighs the dose.
+      await widget.deviceController.scanForDevices();
+    } catch (_) {
+      // A failed scan leaves whatever was already discovered in place.
+    }
   }
 
   List<Device> get _machines =>
@@ -74,6 +102,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 16,
                 children: [
+                  _buildScanRow(),
                   _buildSection(
                     title: 'Auto-connect Machine',
                     icon: Icons.coffee_outlined,
@@ -127,6 +156,38 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildScanRow() {
+    return ShadCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _scanning
+                  ? 'Scanning for devices…'
+                  : _devices.isEmpty
+                  ? 'No devices found yet. Scan to see what is nearby.'
+                  : '${_devices.length} device(s) found',
+              style: ShadTheme.of(context).textTheme.muted,
+            ),
+          ),
+          const SizedBox(width: 12),
+          ShadButton.outline(
+            onPressed: _scanning ? null : _scan,
+            leading: _scanning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.bluetooth_searching, size: 16),
+            child: Text(_scanning ? 'Scanning' : 'Scan'),
+          ),
+        ],
       ),
     );
   }
