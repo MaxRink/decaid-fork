@@ -515,6 +515,17 @@ last drives actual HTTP/WebSocket clients through DeviceController, SensorContro
 the JS bridge, and a fake GATT edge. Native bridge coverage uses
 UniversalBleTransport to prove CCCD reset and write-property error behavior.
 These checks do not replace hardware or Scale timing acceptance.
+## Skale firmware metadata
+
+Skale exposes its revision through the standard Device Information Service
+Firmware Revision String (`0x180A` / `0x2A26`). Treat it as opaque,
+connected-session metadata such as `R029`: discover the optional service before
+reading, decode strict UTF-8, ignore empty/malformed values and read failures,
+and fence the result by connection generation so a late read cannot repopulate
+metadata after disconnect or reconnect.
+
+Atomax does not publish a firmware update contract, so Decaid displays the
+revision only and does not infer update availability or implement Skale DFU.
 
 ## Keeping Notes Fresh
 
