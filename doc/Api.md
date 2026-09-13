@@ -72,7 +72,7 @@ For browser clients on a different origin, `ETag` is exposed via `Access-Control
 |--------|------|-------------|---------|
 | GET | `/api/v1/machine/info` | Machine model, firmware, features | `de1handler.dart` |
 | GET | `/api/v1/machine/state` | Current machine state + substate. The steam substates `pausedSteam` and `puffing` report as themselves; both used to report as `idle`. Also returns `deviceId` and process-local `connectionGeneration` for guarded plugin actions | |
-| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). An optional body with `guarded: true` enables source and machine preconditions for brewing-scale idle→espresso starts and espresso→idle stops; stale guards return `409` without writing. An accepted idle stop cancels older queued guarded starts, including a legacy unguarded idle request | |
+| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). An optional body with `guarded: true` enables source and machine preconditions for brewing-scale idle→espresso starts and espresso→idle stops; stale guards return `409` without writing. An omitted guarded key or `guarded: false` preserves the legacy path; malformed JSON and a non-boolean guarded value return `400`. An accepted idle stop cancels older queued guarded starts, including a legacy unguarded idle request | |
 | GET | `/api/v1/machine/settings` | DE1 machine settings (temps, flows) | |
 | POST | `/api/v1/machine/settings` | Update machine settings (one grouped, serialized device write per request) | |
 | POST | `/api/v1/machine/shotSettings` | Update shot settings (steam temp, hot water, target volume, group temp) | |

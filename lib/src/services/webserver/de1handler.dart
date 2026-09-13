@@ -973,9 +973,14 @@ class De1Handler {
     try {
       decoded = jsonDecode(body);
     } catch (_) {
-      return null;
+      return const _GuardedActionParseFailure('Invalid JSON body');
     }
-    if (decoded is! Map || decoded['guarded'] != true) return null;
+    if (decoded is! Map || !decoded.containsKey('guarded')) return null;
+    final guardedFlag = decoded['guarded'];
+    if (guardedFlag is! bool) {
+      return const _GuardedActionParseFailure('Invalid guarded flag');
+    }
+    if (!guardedFlag) return null;
     final expectedMachineId = decoded['expectedMachineId'];
     final expectedMachineGeneration = decoded['expectedMachineGeneration'];
     final expectedState = decoded['expectedState'];

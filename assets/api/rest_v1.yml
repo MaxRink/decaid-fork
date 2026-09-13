@@ -385,9 +385,12 @@ paths:
       description: |
         Requests a state change for the espresso machine. A body with
         `guarded: true` enables the plugin source and machine preconditions
-        documented by `GuardedMachineAction`; all other bodies retain the
-        legacy unguarded behavior. Guarded actions support only an
-        idle-to-espresso start and an espresso-to-idle stop. An accepted idle
+        documented by `GuardedMachineAction`; an omitted guarded key or
+        `guarded: false` retains the legacy unguarded behavior. Malformed JSON
+        and an object whose guarded key is not boolean are rejected with 400;
+        all other valid legacy bodies retain the legacy behavior. Guarded
+        actions support only an idle-to-espresso start and an espresso-to-idle
+        stop. An accepted idle
         stop cancels older queued guarded starts, including a legacy unguarded
         idle request.
       tags: [Machine]
@@ -6097,14 +6100,22 @@ components:
         selectionId:
           type: string
     LegacyMachineStateBody:
-      description: "Any legacy JSON body except an object with guarded: true."
-      not:
-        type: object
-        required: [guarded]
-        properties:
-          guarded:
-            type: boolean
-            enum: [true]
+      description: "A legacy JSON body without guarded, or an object with guarded: false. Malformed JSON and non-boolean guarded values are rejected."
+      oneOf:
+        - type: object
+          not:
+            required: [guarded]
+        - type: object
+          required: [guarded]
+          properties:
+            guarded:
+              type: boolean
+              enum: [false]
+        - type: array
+        - type: string
+          nullable: true
+        - type: number
+        - type: boolean
     GuardedMachineAction:
       type: object
       required:
