@@ -8,8 +8,6 @@ import 'package:rxdart/rxdart.dart';
 
 class TestScale implements Scale {
   @override
-  ScaleInfo? get scaleInfo => null;
-  @override
   final String deviceId;
 
   @override

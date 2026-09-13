@@ -105,16 +105,6 @@ class Skale2Scale
       _deviceInformationController.value;
 
   @override
-  ScaleInfo? get scaleInfo {
-    final info = currentDeviceInformation;
-    if (info == null) return null;
-    return ScaleInfo(
-      firmwareVersion: info.firmwareVersion,
-      batteryLevel: _batteryLevel,
-    );
-  }
-
-  @override
   Stream<DeviceInformation?> get deviceInformation =>
       _deviceInformationController.stream;
 
