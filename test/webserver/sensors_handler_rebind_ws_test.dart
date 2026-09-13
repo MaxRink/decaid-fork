@@ -113,7 +113,7 @@ void main() {
     }
   }
 
-  (IOWebSocketChannel, List<Map<String, dynamic>>) connect(String id) {
+  (IOWebSocketChannel, List<Map<String, dynamic>>) connectPath(String id) {
     final uri = Uri.parse(
       'ws://localhost:${server.port}/ws/v1/sensors/$id/snapshot',
     );
@@ -126,8 +126,35 @@ void main() {
     return (channel, received);
   }
 
+  (IOWebSocketChannel, List<Map<String, dynamic>>) connect(String id) {
+    return connectPath(Uri.encodeComponent(id));
+  }
+
+  test('decodes two encoded sensor ids independently', () async {
+    final first = sensor('plugin:e64ws.reaplugin:e64ws:e64-a');
+    final second = sensor('plugin:e64ws.reaplugin:e64ws:e64-b%literal');
+    await sensorController.register(first);
+    await sensorController.register(second);
+    final (firstChannel, firstReceived) = connect(first.deviceId);
+    final (secondChannel, secondReceived) = connect(second.deviceId);
+    await settle();
+
+    first.emit('first');
+    second.emit('second');
+    await settle();
+
+    expect(firstReceived, [
+      const {'value': 'first'},
+    ]);
+    expect(secondReceived, [
+      const {'value': 'second'},
+    ]);
+    await firstChannel.sink.close();
+    await secondChannel.sink.close();
+  });
+
   test('rebinds to a replacement sensor with the same id', () async {
-    final first = sensor('probe-1');
+    final first = sensor('plugin:e64ws.reaplugin:e64ws:e64-a%literal');
     await sensorController.register(first);
     final (channel, received) = connect(first.deviceId);
     await settle();
