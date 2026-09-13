@@ -374,7 +374,7 @@ paths:
       tags: [Scale]
       responses:
         "200":
-          description: Current brewing scale connection projection
+          description: Current brewing and dosing scale connection projection
           content:
             application/json:
               schema:
