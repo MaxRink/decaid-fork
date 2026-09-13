@@ -70,8 +70,10 @@ guard to `PUT /api/v1/machine/state/espresso` or `/idle`:
 }
 ```
 
-Only `guarded: true` activates validation, so older request bodies retain the
-existing route behavior. Starts are accepted only from idle with definitely
+Only `guarded: true` activates validation, so an omitted guarded key or
+`guarded: false` retains the existing route behavior. A malformed nonempty JSON
+body or an object with a non-boolean `guarded` value returns `400` without a
+machine write. Starts are accepted only from idle with definitely
 inactive GHC and run through the machine write queue. Stops capture the current
 machine and use the immediate idle path; they do not require inactive GHC.
 An accepted idle stop also cancels any older queued guarded start, including a

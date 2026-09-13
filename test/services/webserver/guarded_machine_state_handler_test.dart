@@ -242,6 +242,48 @@ void main() {
     expect(machine.requestedStates, [MachineState.espresso]);
   });
 
+  test('keeps explicit guarded false on the legacy path', () async {
+    final response = await request('espresso', {'guarded': false});
+    expect(response.statusCode, 200);
+    expect(machine.requestedStates, [MachineState.espresso]);
+  });
+
+  test('keeps JSON null on the legacy path', () async {
+    final response = await handler(
+      Request(
+        'PUT',
+        Uri.parse('http://localhost/api/v1/machine/state/espresso'),
+        body: 'null',
+      ),
+    );
+    expect(response.statusCode, 200);
+    expect(machine.requestedStates, [MachineState.espresso]);
+  });
+
+  test(
+    'rejects malformed nonempty JSON without a legacy machine write',
+    () async {
+      final response = await handler(
+        Request(
+          'PUT',
+          Uri.parse('http://localhost/api/v1/machine/state/espresso'),
+          body: '{not-json',
+        ),
+      );
+      expect(response.statusCode, 400);
+      expect(machine.requestedStates, isEmpty);
+    },
+  );
+
+  test(
+    'rejects a non-boolean guarded flag without a legacy machine write',
+    () async {
+      final response = await request('espresso', {'guarded': 'true'});
+      expect(response.statusCode, 400);
+      expect(machine.requestedStates, isEmpty);
+    },
+  );
+
   test('rejects a captured native source after same-id reconnect', () async {
     final stale = guard(expectedState: 'idle', requireInactiveGhc: true);
     final reconnected = TestScale(deviceId: 'brew-scale');

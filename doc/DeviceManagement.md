@@ -1070,7 +1070,10 @@ opt-in guarded body. The machine GET exposes its current device id and
 connection generation; the read-only scale connection projection supplies the
 brewing role's device id, domain session id, and role selection token.
 
-Guarded idle-to-espresso starts are admitted only when the captured machine and
+Only a boolean `guarded: true` body opts into validation. Bodyless requests,
+objects without `guarded`, and objects with `guarded: false` retain the legacy
+path; malformed JSON and non-boolean guarded values return `400` without a
+machine write. Guarded idle-to-espresso starts are admitted only when the captured machine and
 brewing role are still current, the machine is still idle, and GHC is
 definitely inactive. They use the existing serialized machine write queue and
 repeat the checks immediately before the request. Guarded espresso-to-idle
