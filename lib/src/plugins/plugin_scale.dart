@@ -10,6 +10,9 @@ import 'plugin_protocol_device.dart';
 
 class PluginScale extends PluginProtocolDevice
     implements Scale, ScaleSnapshotHandoff, DisconnectToSleepScale {
+  @override
+  ScaleInfo? get scaleInfo => null;
+
   final Set<PluginScaleCapability> capabilities;
   final StreamController<ScaleSnapshot> _snapshots =
       StreamController.broadcast();
