@@ -38,11 +38,6 @@ without recovery until the machine wakes. No plugin reconnect loop is needed.
 
 ## Overview
 
-The bundled Settings plugin checks `GET /api/v1/account/decent` before offering
-its feedback form. Signed-out or unavailable account status shows a sign-in
-message instead. `POST /api/v1/feedback` re-verifies the host account before
-sending feedback and returns `400` when authentication cannot be verified.
-
 > **Note on naming:** Plugin JS APIs use `Rea`-prefixed names (`fetchReaSettings`, `updateReaSetting`, `convertReaToVisualizerFormat`) for backwards compatibility with existing plugins. These were not renamed during the app rename from ReaPrime to Decaid.
 
 Decaid plugins are JavaScript modules that extend the functionality of Decaid.
@@ -124,7 +119,7 @@ A Decaid plugin consists of two required files:
   - `network.websocket`: Open outbound WebSocket connections (`ws://` and `wss://`) through `host.transport`
   - `network.tcp`: Open outbound raw TCP connections through `host.transport`
   - `network.tls`: Open outbound TLS connections (platform trust store) through `host.transport`
-- **drivers**: Device classes the plugin may register. Each declaration has a plugin-local `id` and a `type`: `sensor`, `scale`, or `grinder`. A manifest may declare at most 8 drivers. Driver declarations authorize registration; they do not grant transport access. For example, a WebSocket-backed device also needs `network.websocket`. A driver may declare up to 8 `surfaces`, each with a unique safe `id`, `role` (`settings` or `diagnostics`), and a safe non-reserved `endpoint` naming a declared same-plugin HTTP endpoint. At most one surface has role `settings`. Surfaces require the `api` permission; optional `label` is display text. Plugins cannot supply URLs, authority, credentials, or routes through surfaces. Surface endpoints must not contain unpaired UTF-16 surrogates, which cannot round-trip through URI encoding; valid surrogate pairs remain supported.
+- **drivers**: Device classes the plugin may register. Each declaration has a plugin-local `id` and a `type`. The only currently supported type is `sensor`. A manifest may declare at most 8 drivers. Driver declarations authorize registration; they do not grant transport access. For example, a WebSocket-backed sensor also needs `network.websocket`.
 - **settings**: User-configurable options with `type` (`string`, `number`, `boolean`, `enum`), an optional `label` giving the setting a human-friendly name, an optional `description` explaining what the setting does, an optional `default`, and an optional `secure` flag for credentials such as passwords. Enum `values` are a JSON array of strings. Secure values use platform credential storage, are supplied in memory to `onLoad(settings)`, and are never returned by the REST API.
 
   `GET /api/v1/plugins` returns this schema verbatim under `settings`, so a skin can render a settings form — labels, help text and defaults included — without reading the plugin's repository. `GET /api/v1/plugins/:id/settings` returns the stored values only.
@@ -364,12 +359,10 @@ const upload = await fetch("https://api.example.com/upload", {
 
 ## BLE Declaration Work in Progress (#809)
 
-Manifest parsing accepts the separate `transport.ble` permission, `scale` and
-`grinder` driver types, their type-specific capabilities, and one `ble.match`
-declaration per plugin. BLE binding and public non-BLE registration use the same
-typed adapter for each driver type.
-Accepting a declaration does not grant GATT access. See
-`doc/plans/issue-809-design.md` for the remaining implementation and tests.
+Manifest parsing accepts the separate `transport.ble` permission, `scale`
+driver type, Scale capabilities, and one `ble.match` declaration per plugin.
+Runtime BLE binding and public non-BLE Scale registration are available as
+described below. Accepting a declaration does not grant GATT access.
 
 The matcher supports one case-insensitive `name` predicate (`exact`, `prefix`,
 or `contains`, 1-248 characters), and/or `serviceUuids` (1-64 UUIDs). It does not
@@ -415,8 +408,10 @@ function createPlugin(host) {
 }
 ```
 
-Each connect invocation receives a fresh context with `transport`,
-`publish(snapshot)`, and `reportDisconnected()`. Network `transport` uses the
+Each connect invocation receives a fresh context with `connectionId`,
+`transport`, `publish(snapshot)`, `publishInfo(info)`, and
+`reportDisconnected()`. `connectionId` is an opaque, read-only identity for
+that connection session; it is not GATT authority. Network `transport` uses the
 existing invocation-owned transport API and requires the corresponding network
 permission. Capture this context in protocol callbacks; do not look up a mutable
 current context when a delayed callback runs. The host rejects stale-session
@@ -435,6 +430,14 @@ Optional finite `flow` and nonnegative integer `timerMs` require `flow` and
 `timerTelemetry` capabilities respectively. Battery requires `battery`.
 Arbitrary timestamps and unknown publication fields are rejected.
 
+`publishInfo({firmwareVersion, batteryLevel})` publishes connected-session
+metadata for Scale drivers only. `firmwareVersion` is an opaque string or
+`null`; `batteryLevel` is an integer from 0 through 100 or `null`. Unknown
+fields, invalid types, and Sensor metadata are rejected. Metadata is cleared on
+connect, disconnect, replacement, failure, unload, and stale-session cleanup;
+it is not included in device inventory. A non-null `batteryLevel` requires the
+Scale driver's `battery` capability.
+
 Declare optional commands in manifest `capabilities`: `tare` requires a `tare`
 handler; `timerControl` requires `startTimer`, `stopTimer`, and `resetTimer`;
 `displayControl` requires `sleepDisplay` and `wakeDisplay`. Host registration
@@ -446,65 +449,6 @@ Readiness requires both successful `connect` completion and a valid weight.
 Up to 256 initialization samples are retained for controller activation, then
 delivered once. Initialization is bounded; invalid samples cannot mark ready.
 Publication-ingress timestamps are provisional pending the required timing gate.
-
-### Grinder Registration
-
-Declare a Grinder driver with only the controls it supports:
-
-```json
-{"drivers":[{"id":"grinder","type":"grinder","capabilities":["startStop","grindSetting","rpmControl"]}]}
-```
-
-Optional driver `controls` describe only declared `grindSetting` and `rpmControl`
-capabilities. `grindSetting` supports `{ "kind": "opaque" }`, finite numeric
-`min`/`max` and optional positive `step`, or a nonempty unique string `values`
-array with `kind: "enumerated"`. `rpmControl` supports numeric descriptors
-with nonnegative integer `min`/`max` and optional positive integer `step`.
-Bounds are inclusive; `step` guides adjustment only. For example, numeric
-grind 1–80 / step 1 and RPM 60–120 need no vendor-specific host logic.
-Unknown descriptor fields and unsupported capabilities fail manifest acceptance.
-
-Registered Scale, Sensor and Grinder adapters share a fixed
-`PluginDeviceSurfaceAuthority`: explicit plugin ownership, validated declared
-surfaces and one host URL resolver. Ownership is never inferred from `deviceId`.
-Grinder session availability filters this authority without changing declarations.
-
-Both `host.devices.register` and BLE `host.devices.bindDriver` create the same
-runtime `PluginGrinder`. Every connection receives a fresh session context and
-must publish a valid initial snapshot before it is ready. Snapshots require
-`state` (`idle`, `grinding`, `error`, or `unknown`); optional string `setting`
-requires `grindSetting`, and optional nonnegative integer `rpm` requires
-`rpmControl`. Unknown fields, plugin timestamps, and stale-session publications
-are rejected. Decaid supplies the timestamp. `context.publish(...)` accepts
-only typed snapshots; controls and surfaces are never snapshot fields. The same
-connection context provides `context.publishInfo({controls, surfaces})` for
-session-only info, with the same generation, registration, session fencing and
-64 KiB payload bound. Info publication does not satisfy initial snapshot readiness.
-A supplied
-control descriptor replaces that entire session override; `null` clears that
-control back to its fixed declaration, and `controls: null` clears all overrides.
-Omitted keys preserve existing overrides. `surfaces: ["settings"]` selects a
-subset of manifest-declared IDs; `[]` hides all, `null` restores all, and
-omission preserves selection. Invalid metadata is rejected with
-`invalid_argument` without changing accepted state or disconnecting the device.
-BLE notification callbacks may propagate an invalid `publishInfo` rejection
-without retiring a healthy connection. Snapshot/protocol failures retain their
-existing failure semantics regardless of earlier info publication.
-Session metadata clears on reconnect, disconnect, unload, replacement and
-dispose. The host validates effective settings/RPM before sending the original
-command unchanged. No metadata enters snapshots, inventory, persisted Grinder
-records or a new WebSocket.
-
-Network and BLE grinders use a default 10-second invocation budget for protocol
-initialization and commands. Initialization includes the connect handler and
-first valid snapshot. Grinder timing does not change scale invocation budgets.
-
-Handlers are always `connect` and `disconnect`. `startStop` additionally
-requires `start` and `stop`; `grindSetting` requires `setGrindSetting(setting)`;
-`rpmControl` requires `setRpm(rpm)`. BLE grinders also require `bleEvent`.
-Unsupported controls fail with `unsupported_operation` before a plugin handler
-is invoked. Runtime control uses the singular `/api/v1/grinder/*` API and the
-generic device connect/disconnect routes.
 
 ## Network Transports (`host.transport`)
 
@@ -809,8 +753,9 @@ Definitions, snapshots, command parameters and command results are limited to
 is not remembered across app restarts. On plugin unload, Decaid runs each
 device's `disconnect()` handler, removes every device, and rejects in-flight
 commands owned by the retiring generation, even if `onUnload()` fails. Late
-publications and command results from older generations are ignored. BLE-backed
-drivers use the separate binding contract below.
+publications and command results from older generations
+are ignored. BLE-backed drivers use the separate binding contract below;
+probing and grinder registration are not supported.
 
 ### BLE Driver Binding (`host.devices.bindDriver`)
 
@@ -843,6 +788,9 @@ existing REST/WebSocket paths. Each connection receives a fresh context:
 
 - `context.publish(snapshot)` and `context.reportDisconnected()` belong only to
   that connection. Retaining a context cannot authorize a replacement session.
+- Scale contexts also expose `connectionId` and `publishInfo(info)`; the ID is
+  session identity only, and metadata is connected-session state rather than
+  inventory data.
 - `context.gatt.discoverServices()` returns normalized 128-bit service UUIDs.
 - `read(service, characteristic)` returns base64 bytes.
 - `writeWithResponse(service, characteristic, base64)` and
@@ -874,7 +822,7 @@ is confirmed; a cleanup deadline alone cannot authorize another connection.
 Limits per session are 16 pending GATT operations, 8 subscriptions, 256 queued
 notification events / 64 KiB, and 16 KiB per read or write. Notification overflow
 retires the session rather than dropping protocol data silently. Production permits
-up to 4 active physical bindings per plugin generation. Definitions and Sensor payloads
+one active physical binding per plugin generation. Definitions and Sensor payloads
 retain the 64 KiB JSON limit. Bridge failures carry `code`, including
 `stale_session`, `permission_denied`, `resource_limit`, `attribute_unavailable`,
 `link_lost`, and `timeout`; other native BLE codes are preserved.
@@ -1135,11 +1083,6 @@ When receiving `stateUpdate` events, the payload contains:
   }
 }
 ```
-
-On classic DE1 machines, `mixTemperature` is not a reliable measurement of
-dispensed hot-water outlet temperature while `state.state` is `hotWater`.
-`targetMixTemperature` remains the requested target, not a measured outlet
-temperature.
 
 ## Troubleshooting
 

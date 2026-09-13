@@ -8,10 +8,9 @@ import 'package:reaprime/src/models/device/scan_filter.dart';
 import 'package:reaprime/src/models/device/sensor.dart';
 import 'package:reaprime/src/models/device/transport/data_transport.dart';
 import 'package:rxdart/rxdart.dart';
+
 import 'plugin_device_contract.dart';
-import 'plugin_device_surface_authority.dart';
 import 'plugin_manifest.dart';
-import 'plugin_grinder.dart';
 import 'plugin_scale.dart';
 export 'plugin_device_contract.dart';
 
@@ -115,9 +114,7 @@ class PluginDeviceService implements DeviceDiscoveryService {
     final driverId = _requiredSafeString(definition, 'driverId');
     final instanceId = _requiredSafeString(definition, 'instanceId');
     final name = _requiredString(definition, 'name');
-    final vendor =
-        driver?.type == PluginDriverType.scale ||
-            driver?.type == PluginDriverType.grinder
+    final vendor = driver?.type == PluginDriverType.scale
         ? ''
         : _requiredString(definition, 'vendor');
     final key = (pluginId, generation, registrationHandle);
@@ -137,39 +134,22 @@ class PluginDeviceService implements DeviceDiscoveryService {
     if (_registrations.values.any((sensor) => sensor.deviceId == deviceId)) {
       throw PluginDeviceException('Device already registered: $deviceId');
     }
-    final PluginDeviceAdapter sensor = switch (driver?.type) {
-      PluginDriverType.scale => PluginScale(
-        deviceId: deviceId,
-        name: name,
-        pluginId: pluginId,
-        surfaces: driver!.surfaces,
-        capabilities: driver.capabilities,
-        invoke: invoke,
-        invocationTimeout: scaleInvocationTimeout,
-      ),
-      PluginDriverType.grinder => PluginGrinder(
-        deviceId: deviceId,
-        name: name,
-        capabilities: driver!.grinderCapabilities,
-        controls: driver.controls,
-        surfaces: driver.surfaces,
-        pluginId: pluginId,
-        invoke: invoke,
-        invocationTimeout: const Duration(seconds: 10),
-      ),
-      _ => _PluginSensor(
-        deviceId: deviceId,
-        name: name,
-        vendor: vendor,
-        surfaceAuthority: PluginDeviceSurfaceAuthority(
-          pluginId: pluginId,
-          surfaces: driver?.surfaces ?? const [],
-        ),
-        dataChannels: parsePluginDataChannels(definition['dataChannels']),
-        commands: parsePluginCommands(definition['commands']),
-        invoke: invoke,
-      ),
-    };
+    final PluginDeviceAdapter sensor = driver?.type == PluginDriverType.scale
+        ? PluginScale(
+            deviceId: deviceId,
+            name: name,
+            capabilities: driver!.capabilities,
+            invoke: invoke,
+            invocationTimeout: scaleInvocationTimeout,
+          )
+        : _PluginSensor(
+            deviceId: deviceId,
+            name: name,
+            vendor: vendor,
+            dataChannels: parsePluginDataChannels(definition['dataChannels']),
+            commands: parsePluginCommands(definition['commands']),
+            invoke: invoke,
+          );
     _registrations[key] = sensor;
     _publishDevices();
     return PluginDeviceRegistration(deviceId: deviceId);
@@ -199,16 +179,14 @@ class PluginDeviceService implements DeviceDiscoveryService {
     String? session,
   }) {
     _ensureActive();
-    _checkPayloadSize(
-      info,
-      'Plugin device info',
-      sizeErrorCode: 'resource_limit',
-    );
-    _registration(
-      pluginId,
-      generation,
-      registrationHandle,
-    ).publishInfo(info, session: session);
+    final device = _registration(pluginId, generation, registrationHandle);
+    if (device is! PluginScale) {
+      throw const PluginDeviceException(
+        'Device metadata is only supported by plugin scales',
+        code: 'invalid_argument',
+      );
+    }
+    device.publishInfo(info, session: session);
   }
 
   void reportDisconnected({
@@ -328,7 +306,6 @@ class _PluginSensor implements Sensor, PluginDeviceAdapter {
   _PluginSensor({
     required this.deviceId,
     required this.name,
-    required this.surfaceAuthority,
     required String vendor,
     required List<DataChannel> dataChannels,
     required List<CommandDescriptor> commands,
@@ -343,17 +320,6 @@ class _PluginSensor implements Sensor, PluginDeviceAdapter {
        _dataChannels = {
          for (final channel in dataChannels) channel.key: channel,
        };
-
-  @override
-  final PluginDeviceSurfaceAuthority surfaceAuthority;
-
-  @override
-  void publishInfo(Map<String, dynamic> info, {String? session}) {
-    throw const PluginDeviceException(
-      'Runtime info is unsupported',
-      code: 'unsupported_operation',
-    );
-  }
 
   final PluginDeviceInvoker _invoke;
   final Map<String, DataChannel> _dataChannels;
@@ -539,11 +505,8 @@ void validatePluginSensorSnapshot(
   }
 }
 
-void validatePluginDevicePayload(
-  Object payload,
-  String name, {
-  String sizeErrorCode = 'plugin_device_error',
-}) => _checkPayloadSize(payload, name, sizeErrorCode: sizeErrorCode);
+void validatePluginDevicePayload(Object payload, String name) =>
+    _checkPayloadSize(payload, name);
 
 String _requiredSafeString(Map<String, dynamic> json, String key) {
   final value = _requiredString(json, key);
@@ -637,15 +600,11 @@ bool _matchesType(Object? value, String type) => switch (type) {
   _ => false,
 };
 
-void _checkPayloadSize(
-  Object payload,
-  String name, {
-  String sizeErrorCode = 'plugin_device_error',
-}) {
+void _checkPayloadSize(Object payload, String name) {
   try {
     if (utf8.encode(jsonEncode(payload)).length >
         _maxPluginDevicePayloadBytes) {
-      throw PluginDeviceException('$name exceeds 64 KiB', code: sizeErrorCode);
+      throw PluginDeviceException('$name exceeds 64 KiB');
     }
   } on JsonUnsupportedObjectError {
     throw PluginDeviceException('$name must be JSON encodable');

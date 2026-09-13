@@ -819,10 +819,6 @@ class PluginManager {
           try {
             const handlerResult = operation === "connect"
               ? handler(entry.connectTransport(invocationId, payload))
-              : operation === "setGrindSetting"
-              ? handler(payload.setting)
-              : operation === "setRpm"
-              ? handler(payload.rpm)
               : handler(payload);
             const promise = __nativeReflectApply(
               __nativePromiseResolve,
@@ -1316,10 +1312,11 @@ class PluginManager {
           _replyDevice(requestId, bridgeToken, result: const {});
         case 'blePublishInfo':
           final info = data['info'];
-          if (info is! Map) {
+          final session = data['session'];
+          if (info is! Map || (session != null && session is! String)) {
             throw const PluginBleException(
               'invalid_argument',
-              'Invalid BLE info',
+              'Invalid BLE device metadata',
             );
           }
           bleService.publishInfo(
@@ -1327,7 +1324,7 @@ class PluginManager {
             generation,
             registrationHandle,
             Map<String, dynamic>.from(info),
-            data['session'] as String?,
+            session as String?,
           );
           _replyDevice(requestId, bridgeToken, result: const {});
         case 'bleDisconnected':
@@ -1356,8 +1353,7 @@ class PluginManager {
             );
           }
           final driver = declarations.single;
-          if (driver.type == PluginDriverType.scale ||
-              driver.type == PluginDriverType.grinder) {
+          if (driver.type == PluginDriverType.scale) {
             final requiredHandlers = {
               'connect',
               'disconnect',
@@ -1376,20 +1372,6 @@ class PluginManager {
                 'sleepDisplay',
                 'wakeDisplay',
               ],
-              if (driver.grinderCapabilities.contains(
-                PluginGrinderCapability.startStop,
-              )) ...[
-                'start',
-                'stop',
-              ],
-              if (driver.grinderCapabilities.contains(
-                PluginGrinderCapability.grindSetting,
-              ))
-                'setGrindSetting',
-              if (driver.grinderCapabilities.contains(
-                PluginGrinderCapability.rpmControl,
-              ))
-                'setRpm',
             };
             for (final operation in PluginDeviceOperation.values) {
               final present =
@@ -1402,7 +1384,7 @@ class PluginManager {
                   'true';
               if (present != requiredHandlers.contains(operation.name)) {
                 throw PluginDeviceException(
-                  '${driver.type.name} handler ${operation.name} does not match declared capabilities',
+                  'Scale handler ${operation.name} does not match declared capabilities',
                   code: 'invalid_argument',
                 );
               }
@@ -1444,20 +1426,16 @@ class PluginManager {
           _replyDevice(requestId, bridgeToken, result: const {});
         case 'publishInfo':
           final info = data['info'];
-          if (info is! Map) {
-            throw const PluginDeviceException(
-              'Invalid plugin device info',
-              code: 'invalid_argument',
-            );
+          final session = data['session'];
+          if (info is! Map || (session != null && session is! String)) {
+            throw const PluginDeviceException('Invalid plugin device metadata');
           }
           deviceService.publishInfo(
             pluginId: pluginId,
             generation: generation,
             registrationHandle: registrationHandle,
             info: Map<String, dynamic>.from(info),
-            session: data['session'] is String
-                ? data['session'] as String
-                : null,
+            session: session as String?,
           );
           _replyDevice(requestId, bridgeToken, result: const {});
         case 'reportDisconnected':
@@ -2168,7 +2146,7 @@ class PluginManager {
             : () => rejectPermission("transport.ble"),
           register(definition, handlers) {
             const driver = definition && declaredDrivers.find((entry) => entry.id === definition.driverId);
-            if (!driver || !["sensor", "scale", "grinder"].includes(driver.type)) {
+            if (!driver || (driver.type !== "sensor" && driver.type !== "scale")) {
               return Promise.reject(new Error("Device driver is not declared by this plugin"));
             }
             if (!handlers || typeof handlers.connect !== "function" ||
@@ -2177,34 +2155,30 @@ class PluginManager {
               return Promise.reject(new Error("Device handlers connect, disconnect, and execute are required"));
             }
             const registrationHandle = "device_" + pluginGeneration + "_" + __deviceNonce + "_" + (++__deviceSeq);
-            let retired = false;
-            const sessionCall = (type, payload) => retired
-              ? Promise.reject(Object.assign(new Error('Device session retired'), {code: 'stale_session'}))
-              : __deviceCall(type, payload);
             __deviceSetHandlers(registrationHandle, {
               pluginId: pluginId,
               generation: pluginGeneration,
               bridgeToken: pluginBridgeToken,
               handlers: handlers,
-              dispose: () => { retired = true; },
               connectTransport: (invocationId, payload) => {
                 const transport = __connectTransport(registrationHandle, invocationId);
                 if (driver.type === "sensor") return transport;
                 const session = payload.session;
                 return Object.freeze({
+                  connectionId: session,
                   transport: transport,
                   publish(snapshot) {
-                    return sessionCall("publish", {
+                    return __deviceCall("publish", {
                       registrationHandle: registrationHandle, session: session, snapshot: snapshot
                     });
                   },
                   publishInfo(info) {
-                    return sessionCall("publishInfo", {
+                    return __deviceCall("publishInfo", {
                       registrationHandle: registrationHandle, session: session, info: info
                     });
                   },
                   reportDisconnected() {
-                    return sessionCall("reportDisconnected", {
+                    return __deviceCall("reportDisconnected", {
                       registrationHandle: registrationHandle, session: session
                     });
                   }
@@ -2241,7 +2215,7 @@ class PluginManager {
                     );
                   }
                 };
-                if (driver.type === "scale" || driver.type === "grinder") {
+                if (driver.type === "scale") {
                   delete device.publish;
                   delete device.reportDisconnected;
                 }

@@ -6,9 +6,8 @@ import 'package:reaprime/src/models/device/transport/data_transport.dart';
 import 'plugin_ble_registry.dart';
 import 'plugin_ble_session.dart';
 import 'plugin_bound_sensor.dart';
-import 'plugin_device_service.dart';
+import 'plugin_device_contract.dart';
 import 'plugin_manifest.dart';
-import 'plugin_grinder.dart';
 import 'plugin_scale.dart';
 
 class PluginBleBinding {
@@ -45,45 +44,27 @@ class PluginBleBinding {
   }) {
     final publicId =
         'plugin:${driver.pluginId}:${driver.declaration.id}:$physicalId';
-    device = switch (driver.declaration.type) {
-      PluginDriverType.sensor => PluginBoundSensor(
-        pluginId: driver.pluginId,
-        surfaces: driver.declaration.surfaces,
-        deviceId: publicId,
-        name: name,
-        invoke: invoke,
-        transportType: TransportType.ble,
-        prepareConnection: prepareConnection,
-        onReady: () => _session!.markReady(),
-        invocationTimeout: invocationTimeout,
-        definition: definition,
-      ),
-      PluginDriverType.scale => PluginScale(
-        pluginId: driver.pluginId,
-        surfaces: driver.declaration.surfaces,
-        deviceId: publicId,
-        name: name,
-        invoke: invoke,
-        transportType: TransportType.ble,
-        prepareConnection: prepareConnection,
-        onReady: () => _session!.markReady(),
-        invocationTimeout: invocationTimeout,
-        capabilities: driver.declaration.capabilities,
-      ),
-      PluginDriverType.grinder => PluginGrinder(
-        deviceId: publicId,
-        name: name,
-        invoke: invoke,
-        transportType: TransportType.ble,
-        prepareConnection: prepareConnection,
-        onReady: () => _session!.markReady(),
-        invocationTimeout: invocationTimeout,
-        capabilities: driver.declaration.grinderCapabilities,
-        controls: driver.declaration.controls,
-        surfaces: driver.declaration.surfaces,
-        pluginId: driver.pluginId,
-      ),
-    };
+    device = driver.declaration.type == PluginDriverType.sensor
+        ? PluginBoundSensor(
+            deviceId: publicId,
+            name: name,
+            invoke: invoke,
+            transportType: TransportType.ble,
+            prepareConnection: prepareConnection,
+            onReady: () => _session!.markReady(),
+            invocationTimeout: invocationTimeout,
+            definition: definition,
+          )
+        : PluginScale(
+            deviceId: publicId,
+            name: name,
+            invoke: invoke,
+            transportType: TransportType.ble,
+            prepareConnection: prepareConnection,
+            onReady: () => _session!.markReady(),
+            invocationTimeout: invocationTimeout,
+            capabilities: driver.declaration.capabilities,
+          );
   }
 
   bool get occupied =>
@@ -212,7 +193,6 @@ class PluginBleBinding {
     String? sample,
   }) {
     _checkPublication(domainSession);
-    validatePluginDevicePayload(snapshot, 'Plugin device snapshot');
     final timestamp = sample == null ? null : _session!.consumeSample(sample);
     final target = device;
     if (target is PluginScale) {
@@ -224,12 +204,14 @@ class PluginBleBinding {
 
   void publishInfo(Map<String, dynamic> info, String? domainSession) {
     _checkPublication(domainSession);
-    validatePluginDevicePayload(
-      info,
-      'Plugin device info',
-      sizeErrorCode: 'resource_limit',
-    );
-    device.publishInfo(info, session: domainSession);
+    final target = device;
+    if (target is! PluginScale) {
+      throw const PluginBleException(
+        'invalid_argument',
+        'Device metadata is only supported by plugin scales',
+      );
+    }
+    target.publishInfo(info, session: domainSession);
   }
 
   void reportDisconnected(String? domainSession) {
