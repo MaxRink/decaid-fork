@@ -5603,12 +5603,6 @@ components:
           additionalProperties: true
       additionalProperties: true
 
-    ScaleInfo:
-      type: object
-      properties:
-        firmwareVersion:
-          type: string
-          description: Opaque scale firmware version, when reported.
     FlowSmoothingConfig:
       type: object
       required: [windowMs, movingAverageSamples]

@@ -33,6 +33,9 @@ abstract class SettingsService {
   Future<String?> preferredMachineId();
   Future<void> setPreferredMachineId(String? machineId);
   Future<String?> preferredScaleId();
+
+  /// The scale reserved for weighing the dose. Null when there is only
+  /// one scale, which is the ordinary case.
   Future<String?> dosingScaleId();
   Future<void> setDosingScaleId(String? scaleId);
   Future<void> setPreferredScaleId(String? scaleId);

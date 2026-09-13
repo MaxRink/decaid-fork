@@ -58,7 +58,8 @@ class _InformationScale extends TestScale
 
 class _SettingsScale extends _InformationScale
     implements DeviceSettingsCapable {
-  _SettingsScale({required super.deviceId}) : super(firmwareVersion: 'R029');
+  _SettingsScale({required super.deviceId})
+    : super(firmwareVersion: 'R029', scaleName: 'Settings scale');
 
   @override
   PluginDeviceSettings get deviceSettings => const PluginDeviceSettings(
