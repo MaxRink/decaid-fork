@@ -19,3 +19,5 @@ A circle press tares only the currently assigned originating role. The dosing sq
 ## Verification and limits
 
 The deterministic fixture uses two same-plugin Skales with distinct physical IDs, independent sessions, role selection, per-instance tare, disconnect/reconnect, and scan coverage. The actual-host integration routes button requests through `De1Handler` and `ScaleHandler` and waits on the completed scale-connections response before asserting that dosing produced no machine request. The captured environment has no real Skale hardware; hardware validation remains a maintainer gate.
+
+The intended repository archive destination is `doc/plans/archive/skale-plugin-scale/2026-09-13-skale-plugin-scale.md` when the parent constructs the clean review history. This task-root copy is the source handoff artifact and is not itself a source commit.

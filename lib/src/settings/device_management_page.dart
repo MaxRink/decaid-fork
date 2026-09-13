@@ -305,6 +305,10 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
       if (batteryLevel != null) {
         lines.add('Battery: $batteryLevel% (device-reported)');
       }
+      final powerSource = capable.currentDeviceInformation?.powerSource;
+      if (powerSource == DevicePowerSource.usb) {
+        lines.add('Power: USB (manual setting)');
+      }
     }
     return lines.join(' · ');
   }
@@ -362,15 +366,59 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     );
   }
 
-  Widget? _settingsButton(Device device) {
-    if (device is! DeviceSettingsCapable || device.deviceSettings == null) {
-      return null;
-    }
-    return IconButton(
-      tooltip: 'Device settings',
-      icon: const Icon(Icons.settings_outlined),
-      onPressed: () => _openDeviceSettings(device),
+  Future<void> _showScaleSettings(Device device) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: widget.settingsController,
+        builder: (context, _) => AlertDialog(
+          title: Text('${device.name} settings'),
+          content: SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Powered by USB'),
+            subtitle: const Text(
+              'Enable when this Skale has external power. '
+              'Battery reporting is suppressed while enabled.',
+            ),
+            value: widget.settingsController.isSkalePoweredByUsb(
+              device.deviceId,
+            ),
+            onChanged: (value) => widget.settingsController
+                .setSkalePoweredByUsb(device.deviceId, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget? _settingsButton(Device device) {
+    final buttons = <Widget>[];
+    if (device is UsbPowerConfigurable) {
+      buttons.add(
+        IconButton(
+          tooltip: 'Configure ${device.name}',
+          icon: const Icon(Icons.power),
+          onPressed: () => _showScaleSettings(device),
+        ),
+      );
+    }
+    if (device is DeviceSettingsCapable && device.deviceSettings != null) {
+      buttons.add(
+        IconButton(
+          tooltip: 'Device settings',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => _openDeviceSettings(device),
+        ),
+      );
+    }
+    if (buttons.isEmpty) return null;
+    return Row(mainAxisSize: MainAxisSize.min, children: buttons);
   }
 
   Future<void> _openDeviceSettings(Device device) async {
