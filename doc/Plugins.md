@@ -891,6 +891,26 @@ __httpRequestHandler: function (request) {
 }
 ```
 
+A driver may optionally declare `settingsEndpoint` with the ID of one declared
+HTTP endpoint. The manifest must also request `api`; Decaid validates that the
+endpoint exists and is HTTP before exposing a native device-settings action.
+The native action opens the plugin-owned page with `ui=1`, the exact public
+`deviceId`, and the device name as query parameters. The plugin remains the
+authority for validation and persistence, so this is separate from the
+plugin-global `/settings` API and must not add another host settings store.
+
+```json
+{
+  "permissions": ["api"],
+  "drivers": [{
+    "id": "scale",
+    "type": "scale",
+    "settingsEndpoint": "device-settings"
+  }],
+  "api": [{"id": "device-settings", "type": "http", "data": {}}]
+}
+```
+
 A `handleHttpRequest` method on the object `createPlugin` returns works the
 same way — the loader aliases it to `__httpRequestHandler` at load.
 

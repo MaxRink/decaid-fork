@@ -53,6 +53,7 @@ class PluginBleBinding {
             prepareConnection: prepareConnection,
             onReady: () => _session!.markReady(),
             invocationTimeout: invocationTimeout,
+            deviceSettings: _deviceSettings,
             definition: definition,
           )
         : PluginScale(
@@ -64,8 +65,17 @@ class PluginBleBinding {
             onReady: () => _session!.markReady(),
             invocationTimeout: invocationTimeout,
             capabilities: driver.declaration.capabilities,
+            deviceSettings: _deviceSettings,
           );
   }
+
+  PluginDeviceSettings? get _deviceSettings =>
+      driver.declaration.settingsEndpoint == null
+      ? null
+      : PluginDeviceSettings(
+          pluginId: driver.pluginId,
+          endpointId: driver.declaration.settingsEndpoint!,
+        );
 
   bool get occupied =>
       _session != null && _session!.state != PluginBleSessionState.closed;
