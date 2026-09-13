@@ -1135,6 +1135,26 @@ Constraints:
   logout or successful account replacement clears the account's cached machine
   list and mappings.
 
+### Guarded plugin machine actions
+
+The REST machine-state route has an opt-in guarded body for plugin-owned
+brewing scale controls. `GET /api/v1/scale/connections` supplies the brewing
+scale's physical device ID and opaque connection and selection identities. A
+guarded espresso start requires the captured machine connection and
+generation, an idle snapshot, an inactive group-head controller, the same
+brewing scale connection, and a non-full gateway. These preconditions are
+rechecked immediately before the queued write.
+
+A guarded espresso-to-idle stop requires the corresponding espresso snapshot
+and source identity. It goes directly through the machine request path so a
+full gateway or queued-start backpressure cannot delay the stop. The hardware
+request remains asynchronous. Every accepted idle stop advances a controller
+cancellation epoch, so an older queued guarded start cannot run after the
+stop. Dosing source requests are rejected with 409. The multi-scale follow-up
+adds their projection and role identification while retaining this policy.
+Legacy bodyless and
+ordinary unguarded requests retain their existing behavior.
+
 ### Hot water stop-at-weight
 
 **Files:** `lib/src/controllers/hot_water_sequencer.dart` (wiring),
