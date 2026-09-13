@@ -762,6 +762,17 @@ battery value is cleared, and metadata reports `powerSource: usb` with
 battery read and the normal refresh interval. Other scale implementations and
 other Skale devices are unaffected.
 
+### Bengle integrated scale
+
+See [`device-notes/bengle.md`](device-notes/bengle.md#integrated-scale).
+
+`preferredScaleId` is ignored while a Bengle is connected. Multi-scale
+support (external scale alongside the integrated scale) is on the roadmap. The
+REST and WebSocket device inventories include the attached virtual scale even
+though it does not originate from `DeviceController` discovery. It is
+inventory-only in the devices API: connect and disconnect commands reject its
+ID because its lifecycle follows the Bengle machine.
+
 ## Dosing scale
 
 A second scale can be reserved for weighing the dose. The scale named by
@@ -776,16 +787,10 @@ With no `dosingScaleId` set, scale selection behaves exactly as it did before
 the setting existed. A Bengle takes the brewing slot with its integrated
 scale and skips external discovery, so no dosing scale is connected then.
 
-`preferredScaleId` is ignored while a Bengle is connected. Multi-scale
-support (external scale alongside the integrated scale) is on the roadmap. The
-REST and WebSocket device inventories include the attached virtual scale even
-though it does not originate from `DeviceController` discovery. It is
-inventory-only in the devices API: connect and disconnect commands reject its
-ID because its lifecycle follows the Bengle machine.
-
-### Bengle integrated scale
-
-See [`device-notes/bengle.md`](device-notes/bengle.md#integrated-scale).
+Plugin scales expose independent brewing and dosing connection identities.
+Circle presses tare the assigned instance. Square presses remain a
+brewing-only guarded machine action, so a dosing scale cannot start or stop
+the machine; both roles retain their own stale-session fencing.
 
 ---
 
