@@ -28,7 +28,7 @@ class SkaleSettingsFixture {
   var error = false;
   var delay = Duration.zero;
   var machineDelay = Duration.zero;
-  Map<String, dynamic> scaleConnections = {'brewing': null};
+  Map<String, dynamic> scaleConnections = {'brewing': null, 'dosing': null};
   Map<String, dynamic> machineState = {
     'deviceId': 'MockDe1',
     'connectionGeneration': 1,

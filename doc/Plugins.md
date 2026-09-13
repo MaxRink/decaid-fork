@@ -168,10 +168,9 @@ function createPlugin(host) {
 
 ## Guarded machine actions
 
-Plugins that own a brewing scale can use `GET /api/v1/scale/connections` to
-capture its current `deviceId`, opaque `connectionId`, and `selectionId`. The
-projection contains only the brewing role in this single-device stage; the
-multi-scale follow-up will add dosing projection and wiring.
+Plugins that own a scale can use `GET /api/v1/scale/connections` to capture the
+current `deviceId`, opaque `connectionId`, and `selectionId` for the brewing
+and dosing roles. Guarded machine actions accept only the brewing source.
 
 Pass the captured identity together with a fresh machine state response when
 requesting a guarded transition:
@@ -857,7 +856,7 @@ is confirmed; a cleanup deadline alone cannot authorize another connection.
 Limits per session are 16 pending GATT operations, 8 subscriptions, 256 queued
 notification events / 64 KiB, and 16 KiB per read or write. Notification overflow
 retires the session rather than dropping protocol data silently. Production permits
-one active physical binding per plugin generation. Definitions and Sensor payloads
+up to 4 active physical bindings per plugin generation. Definitions and Sensor payloads
 retain the 64 KiB JSON limit. Bridge failures carry `code`, including
 `stale_session`, `permission_denied`, `resource_limit`, `attribute_unavailable`,
 `link_lost`, and `timeout`; other native BLE codes are preserved.

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
+import 'package:reaprime/src/controllers/dosing_scale_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
 import 'package:reaprime/src/models/device/machine.dart';
@@ -34,7 +35,7 @@ void main() {
     _settings.error = false;
     _settings.delay = Duration.zero;
     _settings.machineDelay = Duration.zero;
-    _settings.scaleConnections = {'brewing': null};
+    _settings.scaleConnections = {'brewing': null, 'dosing': null};
     _settings.machineState = {
       'deviceId': 'machine-1',
       'connectionGeneration': 1,
@@ -62,6 +63,7 @@ void main() {
       await de1.initSettled.firstWhere((generation) => generation != null);
 
       final brewingController = ScaleController();
+      final dosingController = DosingScaleController();
       final settingsController = SettingsController(MockSettingsService());
       await settingsController.loadSettings();
       final app = Router().plus;
@@ -69,6 +71,7 @@ void main() {
         controller: de1,
         settingsController: settingsController,
         scaleController: brewingController,
+        dosingScaleController: dosingController,
         workflowController: WorkflowController(),
       ).addRoutes(app);
       ScaleHandler(
@@ -115,12 +118,23 @@ void main() {
         'AA:20',
         batteryPresent: false,
       );
+      final dosingTransport = SkalePluginTransport(
+        'AA:21',
+        batteryPresent: false,
+      );
       final brewing = await _candidate(
         manager,
         driver,
         evidence,
         'AA:20',
         brewingTransport,
+      );
+      final dosing = await _candidate(
+        manager,
+        driver,
+        evidence,
+        'AA:21',
+        dosingTransport,
       );
       final previousOverrides = HttpOverrides.current;
       HttpOverrides.global = SkaleSettingsHttpOverrides(_settings);
@@ -134,15 +148,42 @@ void main() {
         await brewingTransport.finalEnable.future.timeout(
           const Duration(seconds: 5),
         );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
         brewingTransport.emitWeight(skaleFourBytePacket(1));
         await brewingConnect;
         await brewingController.adoptScale(brewing);
+
+        final dosingConnect = dosing.onConnect().timeout(
+          const Duration(seconds: 5),
+        );
+        await dosingTransport.buttonSubscribed.future.timeout(
+          const Duration(seconds: 5),
+        );
+        await dosingTransport.finalEnable.future.timeout(
+          const Duration(seconds: 5),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        dosingTransport.emitWeight(skaleFourBytePacket(2));
+        await dosingConnect;
+        await dosingController.adoptScale(dosing);
 
         final brewingCircleRead = waitForRoleRead();
         brewingTransport.emitButton(1);
         await brewingCircleRead;
         await _waitFor(() => brewingTransport.writes.any(_isTareWrite));
         expect(brewingTransport.writes.where(_isTareWrite), hasLength(1));
+
+        final dosingCircleRead = waitForRoleRead();
+        dosingTransport.emitButton(1);
+        await dosingCircleRead;
+        await _waitFor(() => dosingTransport.writes.any(_isTareWrite));
+        expect(dosingTransport.writes.where(_isTareWrite), hasLength(1));
+
+        final dosingSquareRead = waitForRoleRead();
+        dosingTransport.emitButton(2);
+        await dosingSquareRead;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(machine.requestedStates, isEmpty);
 
         final brewingSquareRead = waitForRoleRead();
         brewingTransport.emitButton(2);
@@ -158,7 +199,10 @@ void main() {
       } finally {
         HttpOverrides.global = previousOverrides;
         _settings.apiHandler = null;
+        await dosingController.disconnect();
+        await brewing.disconnect();
         brewingController.dispose();
+        dosingController.dispose();
         await manager.dispose();
         await de1.dispose();
       }

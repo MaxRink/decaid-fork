@@ -20,6 +20,7 @@ class MockSettingsService extends SettingsService {
   bool _stopHotWaterAtWeight = true;
   String? _preferredMachineId;
   String? _preferredScaleId;
+  String? _dosingScaleId;
   Map<String, bool> _skalePoweredByUsbByDevice = {};
   String _defaultSkinId = 'streamline.js';
   bool _automaticUpdateCheck = true;
@@ -119,6 +120,11 @@ class MockSettingsService extends SettingsService {
   @override
   Future<void> setPreferredScaleId(String? scaleId) async =>
       _preferredScaleId = scaleId;
+  @override
+  Future<String?> dosingScaleId() async => _dosingScaleId;
+  @override
+  Future<void> setDosingScaleId(String? scaleId) async =>
+      _dosingScaleId = scaleId;
   @override
   Future<Map<String, bool>> skalePoweredByUsbByDevice() async =>
       Map.unmodifiable(_skalePoweredByUsbByDevice);

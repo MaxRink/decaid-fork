@@ -72,7 +72,7 @@ For browser clients on a different origin, `ETag` is exposed via `Access-Control
 |--------|------|-------------|---------|
 | GET | `/api/v1/machine/info` | Machine model, firmware, features | `de1handler.dart` |
 | GET | `/api/v1/machine/state` | Current machine state + substate, plus the captured `deviceId` and `connectionGeneration` used by guarded actions. The steam substates `pausedSteam` and `puffing` report as themselves; both used to report as `idle` | `de1handler.dart` |
-| GET | `/api/v1/scale/connections` | Brewing scale connection identity (`deviceId`, opaque `connectionId`, and `selectionId`), or `null` when unavailable. Dosing projection is reserved for the multi-scale follow-up | `de1handler.dart` |
+| GET | `/api/v1/scale/connections` | Brewing and dosing scale connection identities (`deviceId`, opaque `connectionId`, and `selectionId`) for each role, or `null` when unavailable. Guarded machine actions accept only the brewing source | `de1handler.dart` |
 | PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). `guarded: true` accepts only an identity-fenced idle-to-espresso start or espresso-to-idle stop; stale or dosing sources return 409. Malformed JSON or a non-boolean `guarded` value returns 400. Bodies without `guarded`, with `guarded: false`, and bodyless requests retain legacy behavior | `de1handler.dart` |
 | GET | `/api/v1/machine/settings` | DE1 machine settings (temps, flows) | |
 | POST | `/api/v1/machine/settings` | Update machine settings (one grouped, serialized device write per request) | |
@@ -119,6 +119,7 @@ Pre-stream responses are `400` for malformed input, `404` for an unknown artifac
 |--------|------|-------------|---------|
 | GET | `/api/v1/scale/info` | Information for the currently connected scale | `scale_handler.dart` |
 | PUT | `/api/v1/scale/tare` | Tare the connected scale | `scale_handler.dart` |
+| PUT | `/api/v1/scale/dosing/tare` | Tare the dosing scale, when one is configured | `dosing_scale_handler.dart` |
 | PUT | `/api/v1/scale/timer/start` | Start scale timer | |
 | PUT | `/api/v1/scale/timer/stop` | Stop scale timer | |
 | PUT | `/api/v1/scale/timer/reset` | Reset scale timer | |
@@ -628,6 +629,7 @@ All WebSocket endpoints are on port 8080 at `/ws/v1/...`. See [`assets/api/webso
 | Path | Description | Data |
 |------|-------------|------|
 | `/ws/v1/machine/snapshot` | Machine state stream (~10Hz). Re-binds across a machine reconnect — see [Machine sockets re-bind](#machine-sockets-re-bind-across-a-reconnect). | Temps, pressures, flow, state |
+| `/ws/v1/scale/dosing/snapshot` | Weight from the scale reserved for weighing the dose, when one is configured. Never carries a shot: nothing in the brewing path reads this scale. Same frames and status behaviour as the brewing channel. | Weight, battery |
 | `/ws/v1/scale/snapshot` | Scale weight/flow stream. Device-provided flow is passed through; weight-only scales use Decaid's estimator. Stays open across scale disconnects; emits `{"status":"connected"\|"disconnected"}` frames on state change. | Weight, flow, battery |
 | `/ws/v1/machine/shotSettings` | Shot settings changes. Re-binds across a machine reconnect. | Target temp, volume, weight |
 | `/ws/v1/machine/waterLevels` | Water level changes. Re-binds across a machine reconnect. | Current/limit levels |

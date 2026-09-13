@@ -42,6 +42,7 @@ class SettingsController with ChangeNotifier {
   String? _preferredMachineId;
 
   String? _preferredScaleId;
+  String? _dosingScaleId;
   Map<String, bool> _skalePoweredByUsbByDevice = {};
 
   String _defaultSkinId = 'streamline.js';
@@ -89,6 +90,7 @@ class SettingsController with ChangeNotifier {
   bool get stopHotWaterAtWeight => _stopHotWaterAtWeight;
   String? get preferredMachineId => _preferredMachineId;
   String? get preferredScaleId => _preferredScaleId;
+  String? get dosingScaleId => _dosingScaleId;
   Map<String, bool> get skalePoweredByUsbByDevice =>
       Map.unmodifiable(_skalePoweredByUsbByDevice);
   bool isSkalePoweredByUsb(String deviceId) =>
@@ -133,6 +135,7 @@ class SettingsController with ChangeNotifier {
     _stopHotWaterAtWeight = await _settingsService.stopHotWaterAtWeight();
     _preferredMachineId = await _settingsService.preferredMachineId();
     _preferredScaleId = await _settingsService.preferredScaleId();
+    _dosingScaleId = await _settingsService.dosingScaleId();
     _skalePoweredByUsbByDevice = await _settingsService
         .skalePoweredByUsbByDevice();
     _defaultSkinId = await _settingsService.defaultSkinId();
@@ -325,6 +328,15 @@ class SettingsController with ChangeNotifier {
     }
     _preferredScaleId = scaleId;
     await _settingsService.setPreferredScaleId(scaleId);
+    notifyListeners();
+  }
+
+  Future<void> setDosingScaleId(String? scaleId) async {
+    if (scaleId == _dosingScaleId) {
+      return;
+    }
+    _dosingScaleId = scaleId;
+    await _settingsService.setDosingScaleId(scaleId);
     notifyListeners();
   }
 

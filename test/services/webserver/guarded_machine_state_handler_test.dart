@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
+import 'package:reaprime/src/controllers/dosing_scale_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
 import 'package:reaprime/src/models/device/device.dart';
@@ -100,6 +101,7 @@ void main() {
   late De1Controller controller;
   late TestDe1 machine;
   late ScaleController scales;
+  late DosingScaleController dosingScales;
   late SettingsController settings;
   late Handler handler;
   late String brewingConnectionId;
@@ -115,6 +117,7 @@ void main() {
     await controller.initSettled.firstWhere((generation) => generation != null);
 
     scales = ScaleController();
+    dosingScales = DosingScaleController();
     brewingScale = TestScale(deviceId: 'brew-scale');
     await scales.connectToScale(brewingScale);
     settings = SettingsController(MockSettingsService());
@@ -123,6 +126,7 @@ void main() {
       controller: controller,
       settingsController: settings,
       scaleController: scales,
+      dosingScaleController: dosingScales,
       workflowController: WorkflowController(),
     );
     final app = Router().plus;
@@ -143,6 +147,7 @@ void main() {
 
   tearDown(() async {
     scales.dispose();
+    dosingScales.dispose();
     brewingScale.dispose();
     await controller.dispose();
   });
@@ -183,7 +188,7 @@ void main() {
       expect(connections.statusCode, 200);
       final connectionJson = jsonDecode(await connections.readAsString());
       expect(connectionJson['brewing']['deviceId'], 'brew-scale');
-      expect(connectionJson.containsKey('dosing'), isFalse);
+      expect(connectionJson['dosing'], isNull);
 
       final state = await handler(
         Request('GET', Uri.parse('http://localhost/api/v1/machine/state')),
@@ -228,6 +233,23 @@ void main() {
     );
     expect(full.statusCode, 409);
     expect(machine.requestedStates, isEmpty);
+  });
+
+  test('projects the connected dosing scale identity', () async {
+    final dosingScale = TestScale(deviceId: 'dose-scale');
+    addTearDown(dosingScale.dispose);
+    await dosingScales.connectToScale(dosingScale);
+
+    final response = await handler(
+      Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
+    );
+    final connectionJson = jsonDecode(await response.readAsString());
+    final dosing = connectionJson['dosing'] as Map<String, dynamic>;
+    expect(dosing['deviceId'], 'dose-scale');
+    expect(dosing['connectionId'], isA<String>());
+    expect(dosing['connectionId'] as String, isNotEmpty);
+    expect(dosing['selectionId'], isA<String>());
+    expect(dosing['selectionId'] as String, isNotEmpty);
   });
 
   test('ignores arbitrary non-guarded bodies for compatibility', () async {

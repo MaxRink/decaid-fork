@@ -28,7 +28,7 @@ void main() {
     _settings.machineDelay = Duration.zero;
     _settings.holdStartResponse = null;
     _settings.startRequestStarted = null;
-    _settings.scaleConnections = {'brewing': null};
+    _settings.scaleConnections = {'brewing': null, 'dosing': null};
     _settings.machineState = {
       'deviceId': 'MockDe1',
       'connectionGeneration': 1,
@@ -120,7 +120,10 @@ void main() {
   test(
     'Skale host binding limit rejects a second connection without harming the first',
     () => _withSettings(() async {
-      final manager = PluginManager(kvStore: FakeKeyValueStoreService());
+      final manager = PluginManager(
+        kvStore: FakeKeyValueStoreService(),
+        bleRegistry: PluginBleRegistry(activeBindingLimit: 1),
+      );
       addTearDown(manager.dispose);
       await loadSkalePlugin(manager);
       final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
@@ -180,6 +183,151 @@ void main() {
       expect(firstSnapshots.last.weight, closeTo(2, 0.001));
       await first.disconnect();
       await manager.bleService.discard(secondScale);
+    }),
+  );
+
+  test(
+    'Skale BLE matching is service based and instances fence callbacks',
+    () => _withSettings(() async {
+      final manager = PluginManager(
+        kvStore: FakeKeyValueStoreService(),
+        bleRegistry: PluginBleRegistry(activeBindingLimit: 2),
+      );
+      addTearDown(manager.dispose);
+      await loadSkalePlugin(manager);
+      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
+      final driver = manager.bleService.registry
+          .decide(evidence)
+          .drivers
+          .single;
+      final transports = <SkalePluginTransport>[];
+      Future<Scale> candidate(String id) async =>
+          await manager.bleService.createCandidate(
+                driver: driver,
+                physicalId: id,
+                evidence: evidence,
+                admit: () => true,
+                createTransport: () {
+                  final transport = SkalePluginTransport(id);
+                  transports.add(transport);
+                  return transport;
+                },
+              )
+              as Scale;
+      final first = await candidate('AA:01');
+      final second = await candidate('AA:02');
+      (first as ScaleSnapshotHandoff).activateSnapshots();
+      (second as ScaleSnapshotHandoff).activateSnapshots();
+      final firstSnapshots = <ScaleSnapshot>[];
+      final secondSnapshots = <ScaleSnapshot>[];
+      final firstSub = first.currentSnapshot.listen(firstSnapshots.add);
+      final secondSub = second.currentSnapshot.listen(secondSnapshots.add);
+      addTearDown(firstSub.cancel);
+      addTearDown(secondSub.cancel);
+      final firstConnect = first.onConnect();
+      final secondConnect = second.onConnect();
+      await Future.wait([
+        transports[0].buttonSubscribed.future,
+        transports[1].buttonSubscribed.future,
+        transports[0].finalEnable.future,
+        transports[1].finalEnable.future,
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      transports[0].emitWeight(skaleFourBytePacket(1));
+      transports[1].emitWeight(skaleFourBytePacket(2));
+      await Future.wait([firstConnect, secondConnect]);
+      (first as ScaleSnapshotHandoff).activateSnapshots();
+      (second as ScaleSnapshotHandoff).activateSnapshots();
+      transports[0].emitButton(1);
+      transports[1].emitButton(2);
+      transports[0].emitWeight(skaleFourBytePacket(11));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(firstSnapshots.map((snapshot) => snapshot.weight), [1, 11]);
+      expect(secondSnapshots.map((snapshot) => snapshot.weight), [2]);
+      expect(manager.bleService.registry.activeBindingCount, 2);
+      await first.disconnect();
+      await second.disconnect();
+    }),
+  );
+
+  test(
+    'Skale buttons route tare per assigned role and keep dosing square inert',
+    () => _withSettings(() async {
+      _settings.defaultSquareAction = true;
+      final manager = PluginManager(
+        kvStore: FakeKeyValueStoreService(),
+        bleRegistry: PluginBleRegistry(activeBindingLimit: 2),
+      );
+      addTearDown(manager.dispose);
+      await loadSkalePlugin(manager);
+      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
+      final driver = manager.bleService.registry
+          .decide(evidence)
+          .drivers
+          .single;
+      final transports = <SkalePluginTransport>[];
+      Future<Scale> create(String id) async =>
+          await manager.bleService.createCandidate(
+                driver: driver,
+                physicalId: id,
+                evidence: evidence,
+                admit: () => true,
+                createTransport: () {
+                  final transport = SkalePluginTransport(id);
+                  transports.add(transport);
+                  return transport;
+                },
+              )
+              as Scale;
+      final brewing = await create('AA:10');
+      final dosing = await create('AA:11');
+      final brewingConnect = brewing.onConnect();
+      final dosingConnect = dosing.onConnect();
+      await Future.wait([
+        transports[0].buttonSubscribed.future,
+        transports[1].buttonSubscribed.future,
+        transports[0].finalEnable.future,
+        transports[1].finalEnable.future,
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      transports[0].emitWeight(skaleFourBytePacket(1));
+      transports[1].emitWeight(skaleFourBytePacket(1));
+      await Future.wait([brewingConnect, dosingConnect]);
+      final brewingSession = brewing as PluginProtocolDevice;
+      final dosingSession = dosing as PluginProtocolDevice;
+      _settings.scaleConnections = {
+        'brewing': {
+          'deviceId': brewing.deviceId,
+          'connectionId': brewingSession.connectionId,
+          'selectionId': 'brew-selection',
+        },
+        'dosing': {
+          'deviceId': dosing.deviceId,
+          'connectionId': dosingSession.connectionId,
+          'selectionId': 'dose-selection',
+        },
+      };
+      transports[0].emitButton(1);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      transports[1].emitButton(1);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      transports[1].emitButton(2);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        transports[0].writes.where(
+          (write) => write.data.length == 1 && write.data[0] == 0x10,
+        ),
+        hasLength(1),
+      );
+      expect(
+        transports[1].writes.where(
+          (write) => write.data.length == 1 && write.data[0] == 0x10,
+        ),
+        hasLength(1),
+      );
+      expect(_settings.machineRequests, isEmpty);
+      await brewing.disconnect();
+      await dosing.disconnect();
     }),
   );
 

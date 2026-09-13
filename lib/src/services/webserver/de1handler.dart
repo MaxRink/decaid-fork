@@ -4,6 +4,7 @@ class De1Handler {
   final SettingsController _settingsController;
   final De1Controller _controller;
   final ScaleController _scaleController;
+  final DosingScaleController? _dosingScaleController;
   final WorkflowController _workflowController;
   final String _scaleRuntimeIdentity = const Uuid().v4();
   final log = Logger("De1WebHandler");
@@ -12,10 +13,12 @@ class De1Handler {
     required De1Controller controller,
     required SettingsController settingsController,
     required ScaleController scaleController,
+    DosingScaleController? dosingScaleController,
     required WorkflowController workflowController,
   }) : _controller = controller,
        _settingsController = settingsController,
        _scaleController = scaleController,
+       _dosingScaleController = dosingScaleController,
        _workflowController = workflowController;
 
   void addRoutes(RouterPlus app) {
@@ -820,6 +823,14 @@ class De1Handler {
         state: _scaleController.currentConnectionState,
         scale: _connectedBrewingScaleOrNull(),
       ),
+      'dosing': _scaleConnectionProjection(
+        role: 'dosing',
+        generation: _dosingScaleController?.connectionGeneration ?? 0,
+        state:
+            _dosingScaleController?.currentConnectionState ??
+            device.ConnectionState.disconnected,
+        scale: _connectedDosingScaleOrNull(),
+      ),
     });
   }
 
@@ -830,6 +841,18 @@ class De1Handler {
         return null;
       }
       return _scaleController.connectedScale();
+    } catch (_) {}
+    return null;
+  }
+
+  Scale? _connectedDosingScaleOrNull() {
+    final controller = _dosingScaleController;
+    if (controller == null ||
+        controller.currentConnectionState != device.ConnectionState.connected) {
+      return null;
+    }
+    try {
+      return controller.connectedScale();
     } catch (_) {}
     return null;
   }
