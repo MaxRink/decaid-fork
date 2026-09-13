@@ -9,7 +9,8 @@ import 'package:uuid/uuid.dart';
 
 import 'plugin_device_contract.dart';
 
-abstract class PluginProtocolDevice extends PluginDeviceAdapter {
+abstract class PluginProtocolDevice extends PluginDeviceAdapter
+    implements DeviceSettingsCapable {
   @override
   final String deviceId;
   @override
@@ -20,6 +21,8 @@ abstract class PluginProtocolDevice extends PluginDeviceAdapter {
   final Future<void> Function(String session)? prepareConnection;
   final void Function()? onReady;
   final Duration invocationTimeout;
+  @override
+  final PluginDeviceSettings? deviceSettings;
   final BehaviorSubject<ConnectionState> _state = BehaviorSubject.seeded(
     ConnectionState.discovered,
   );
@@ -38,6 +41,7 @@ abstract class PluginProtocolDevice extends PluginDeviceAdapter {
     this.prepareConnection,
     this.onReady,
     this.invocationTimeout = const Duration(seconds: 5),
+    this.deviceSettings,
   });
 
   @override
