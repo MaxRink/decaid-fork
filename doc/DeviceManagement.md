@@ -852,20 +852,7 @@ available.
 
 When a Bengle is the connected machine, its integrated scale is auto-attached
 to `ScaleController` as a virtual `BengleVirtualScale`. The integrated scale
-always wins on Bengle: external scale scanning is skipped entirely, and
-## Dosing scale
-
-A second scale can be reserved for weighing the dose. The scale named by
-`dosingScaleId` is removed from the list the brewing scale policy is offered,
-so a shot is always weighed on the other one, and is connected instead to
-`DosingScaleController` — a separate controller with its own connection and
-snapshot stream that no part of a shot reads. Its weight is served on
-`ws/v1/scale/dosing/snapshot` and tared with `PUT /api/v1/scale/dosing/tare`;
-the brewing scale's own endpoints are unchanged.
-
-With no `dosingScaleId` set, scale selection behaves exactly as it did before
-the setting existed. A Bengle takes the brewing slot with its integrated
-scale and skips external discovery, so no dosing scale is connected then.
+always wins on Bengle: external scale scanning is skipped entirely.
 
 `preferredScaleId` is ignored while a Bengle is connected. Multi-scale
 support (external scale alongside the integrated scale) is on the roadmap. The
@@ -896,6 +883,20 @@ Capability discovery: `GET /api/v1/machine/capabilities` returns the
 complete Bengle capability set (including `"integratedScale"`) for every
 Bengle, and an empty list for plain DE1s. Skins should use this
 flag to gate "internal scale" UX hints.
+
+## Dosing scale
+
+A second scale can be reserved for weighing the dose. The scale named by
+`dosingScaleId` is removed from the list the brewing scale policy is offered,
+so a shot is always weighed on the other one, and is connected instead to
+`DosingScaleController` — a separate controller with its own connection and
+snapshot stream that no part of a shot reads. Its weight is served on
+`ws/v1/scale/dosing/snapshot` and tared with `PUT /api/v1/scale/dosing/tare`;
+the brewing scale's own endpoints are unchanged.
+
+With no `dosingScaleId` set, scale selection behaves exactly as it did before
+the setting existed. A Bengle takes the brewing slot with its integrated
+scale and skips external discovery, so no dosing scale is connected then.
 
 ---
 
@@ -1136,10 +1137,10 @@ Constraints:
 
 The REST machine-state route has an opt-in guarded body for plugin-owned
 brewing scale controls. `GET /api/v1/scale/connections` supplies the brewing
-scale's physical device ID and opaque connection and selection identities. A
-guarded espresso start requires the captured machine connection and
-generation, an idle snapshot, an inactive group-head controller, the same
-brewing scale connection, and a non-full gateway. These preconditions are
+and dosing scales' physical device IDs and opaque connection and selection
+identities. A guarded espresso start requires the captured machine connection
+and generation, an idle snapshot, an inactive group-head controller, the
+same brewing scale connection, and a non-full gateway. These preconditions are
 rechecked immediately before the queued write.
 
 A guarded espresso-to-idle stop requires the corresponding espresso snapshot
@@ -1147,9 +1148,8 @@ and source identity. It goes directly through the machine request path so a
 full gateway or queued-start backpressure cannot delay the stop. The hardware
 request remains asynchronous. Every accepted idle stop advances a controller
 cancellation epoch, so an older queued guarded start cannot run after the
-stop. Dosing source requests are rejected with 409. The multi-scale follow-up
-adds their projection and role identification while retaining this policy.
-Legacy bodyless and
+stop. Dosing source requests are rejected with 409 even though the dosing
+projection is available for role-specific scale actions. Legacy bodyless and
 ordinary unguarded requests retain their existing behavior.
 
 ### Hot water stop-at-weight

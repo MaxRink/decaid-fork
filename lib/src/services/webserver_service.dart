@@ -172,6 +172,7 @@ Future<void> startWebServer(
     controller: de1Controller,
     settingsController: settingsController,
     scaleController: scaleController,
+    dosingScaleController: dosingScaleController,
     workflowController: workflowController,
   );
   final firmwareHandler = FirmwareHandler(

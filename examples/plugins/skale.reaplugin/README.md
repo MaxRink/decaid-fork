@@ -2,7 +2,8 @@
 
 This opt-in example ports the Skale BLE weight protocol through the host-owned
 GATT bridge. It matches the `ff08` service and keeps all protocol state inside
-the `create()` result for the currently selected brewing scale.
+the `create()` result for each connected scale. Two plugin Skales can be
+connected once the host quota dependency is landed.
 
 The driver accepts the native 4-byte fixed-point frame and the 5/9-byte signed
 mantissa/exponent frames. It reports the first valid live weight only after the
@@ -19,20 +20,21 @@ after the host store confirms the write.
 
 The same endpoint serves a small settings page with persistence error
 feedback. It shows USB power and a default-off square-action control. The
-circle button tares only when this device is the currently assigned brewing
-scale. The square button starts from idle after a guarded inactive-GHC check
-and stops from espresso through the guarded machine endpoint.
+circle button tares only when this device is the currently assigned brewing or
+dosing scale. The square button starts from idle after a guarded inactive-GHC
+check and stops from espresso through the guarded machine endpoint. Dosing
+square presses are ignored.
 The plugin page works independently; the native settings entry requires the
 host #849 plugin-settings UI integration.
 
 Changing between the native and plugin driver representations changes the
-public device identity. Reselect the brewing scale after that change; saved
-role settings are not migrated automatically.
+public device identity. Reselect the brewing and dosing scales after that
+change; saved role settings are not migrated automatically.
 
 When the device advertises the standard device-information service, firmware is
 read from `180a/2a26` and published with the session-scoped
 `publishInfo({firmwareVersion, batteryLevel})` method. Button requests include
-the brewing assignment, public device ID, host connection ID, and role
-selection ID; stale sessions and changed settings cancel pending actions.
+the originating role assignment, public device ID, host connection ID, and
+role selection ID; stale sessions and changed settings cancel pending actions.
 
 No physical hardware validation is included in this checkpoint.

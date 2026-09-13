@@ -168,10 +168,9 @@ function createPlugin(host) {
 
 ## Guarded machine actions
 
-Plugins that own a brewing scale can use `GET /api/v1/scale/connections` to
-capture its current `deviceId`, opaque `connectionId`, and `selectionId`. The
-projection contains only the brewing role in this single-device stage; the
-multi-scale follow-up will add dosing projection and wiring.
+Plugins that own a scale can use `GET /api/v1/scale/connections` to capture the
+current `deviceId`, opaque `connectionId`, and `selectionId` for the brewing
+and dosing roles. Guarded machine actions accept only the brewing source.
 
 Pass the captured identity together with a fresh machine state response when
 requesting a guarded transition:

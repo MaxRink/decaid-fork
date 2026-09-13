@@ -25,6 +25,8 @@ class DeviceManagementPage extends StatefulWidget {
 class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
   late StreamSubscription<bool> _scanningSubscription;
+  final List<StreamSubscription<DeviceInformation?>>
+  _deviceInformationSubscriptions = [];
   List<Device> _devices = [];
   bool _scanning = false;
 
@@ -33,11 +35,13 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     super.initState();
     _devices = widget.deviceController.devices;
     _scanning = widget.deviceController.isScanning;
+    _syncDeviceInformationSubscriptions();
     _deviceSubscription = widget.deviceController.deviceStream.listen((
       devices,
     ) {
       if (mounted) {
         setState(() => _devices = devices);
+        _syncDeviceInformationSubscriptions();
       }
     });
     _scanningSubscription = widget.deviceController.scanningStream.listen((
@@ -58,6 +62,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
   @override
   void dispose() {
     _deviceSubscription.cancel();
+    for (final subscription in _deviceInformationSubscriptions) {
+      subscription.cancel();
+    }
     _scanningSubscription.cancel();
     super.dispose();
   }
@@ -233,7 +240,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
             ...devices.map(
               (device) => _buildDeviceRadio(
                 name: device.name,
-                subtitle: _truncatedId(device.deviceId),
+                subtitle: _deviceSubtitle(device),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
               ),
@@ -241,6 +248,35 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
         ],
       ),
     );
+  }
+
+  void _syncDeviceInformationSubscriptions() {
+    for (final subscription in _deviceInformationSubscriptions) {
+      subscription.cancel();
+    }
+    _deviceInformationSubscriptions.clear();
+    for (final device in _devices.whereType<DeviceInformationCapable>()) {
+      _deviceInformationSubscriptions.add(
+        device.deviceInformation.skip(1).listen((_) {
+          if (mounted) setState(() {});
+        }),
+      );
+    }
+  }
+
+  String _deviceSubtitle(Device device) {
+    final lines = <String>[_truncatedId(device.deviceId)];
+    if (device case DeviceInformationCapable capable) {
+      final firmwareVersion = capable.currentDeviceInformation?.firmwareVersion;
+      if (firmwareVersion != null) {
+        lines.add('Firmware: $firmwareVersion');
+      }
+      final batteryLevel = capable.currentDeviceInformation?.batteryLevel;
+      if (batteryLevel != null) {
+        lines.add('Battery: $batteryLevel% (device-reported)');
+      }
+    }
+    return lines.join(' · ');
   }
 
   Widget _buildDeviceRadio({

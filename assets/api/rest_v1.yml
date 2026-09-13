@@ -364,13 +364,13 @@ paths:
 
   /api/v1/scale/connections:
     get:
-      summary: Get current brewing scale connection identity
+      summary: Get current brewing and dosing scale connection identities
       description: |
-        Returns the current brewing scale connection identity, or null when no
-        brewing scale with a valid identity is connected. The opaque
-        `connectionId` and `selectionId` values become stale after reconnect,
-        replacement, or runtime restart. Dosing scale projection is reserved
-        for a later multi-scale API stage.
+        Returns the current brewing and dosing scale connection identities, or
+        null for an unavailable role. The opaque `connectionId` and
+        `selectionId` values become stale after reconnect, replacement, or
+        runtime restart. Guarded machine actions accept only the brewing
+        source.
       tags: [Scale]
       responses:
         "200":
@@ -6083,9 +6083,11 @@ components:
           type: number
     ScaleConnections:
       type: object
-      required: [brewing]
+      required: [brewing, dosing]
       properties:
         brewing:
+          $ref: "#/components/schemas/ScaleConnection"
+        dosing:
           $ref: "#/components/schemas/ScaleConnection"
     ScaleConnection:
       type: object
