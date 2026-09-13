@@ -13,8 +13,6 @@ import 'package:reaprime/src/models/errors.dart';
 import '../../scale.dart';
 
 class HiroiaScale implements Scale {
-  @override
-  ScaleInfo? get scaleInfo => null;
   final Logger _log = Logger('HiroiaScale');
 
   static final BleServiceIdentifier serviceIdentifier =

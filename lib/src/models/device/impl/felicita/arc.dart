@@ -14,8 +14,6 @@ import 'package:reaprime/src/models/errors.dart';
 import '../../scale.dart';
 
 class FelicitaArc implements Scale {
-  @override
-  ScaleInfo? get scaleInfo => null;
   final Logger _log = Logger('FelicitaArc');
 
   static final BleServiceIdentifier serviceIdentifier =

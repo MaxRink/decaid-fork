@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
+import 'package:reaprime/src/models/device/device.dart';
 import 'package:reaprime/src/models/errors.dart';
 import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/services/webserver_service.dart';
@@ -56,7 +57,7 @@ void main() {
   test('returns opaque firmwareVersion and optional batteryLevel', () async {
     for (final batteryLevel in [null, 0, 100]) {
       final scale = _InfoScale(
-        ScaleInfo(firmwareVersion: 'R029', batteryLevel: batteryLevel),
+        DeviceInformation(firmwareVersion: 'R029', batteryLevel: batteryLevel),
       );
       addTearDown(scale.dispose);
       final controller = _FixedScaleController(scale);
@@ -75,15 +76,30 @@ void main() {
       }
     }
   });
+
+  test('returns empty info for a scale without metadata capability', () async {
+    final scale = TestScale();
+    addTearDown(scale.dispose);
+    final controller = _FixedScaleController(scale);
+    addTearDown(controller.dispose);
+
+    final response = await requestInfo(controller);
+
+    expect(response.statusCode, 200);
+    expect(jsonDecode(await response.readAsString()), isEmpty);
+  });
 }
 
-class _InfoScale extends TestScale {
+class _InfoScale extends TestScale implements DeviceInformationCapable {
   _InfoScale(this._info);
 
-  final ScaleInfo _info;
+  final DeviceInformation? _info;
 
   @override
-  ScaleInfo get scaleInfo => _info;
+  DeviceInformation? get currentDeviceInformation => _info;
+
+  @override
+  Stream<DeviceInformation?> get deviceInformation => Stream.value(_info);
 }
 
 class _FixedScaleController extends ScaleController {

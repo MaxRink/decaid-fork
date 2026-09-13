@@ -21,7 +21,16 @@ class ScaleHandler {
         return jsonNotFound({'error': 'Unknown command: $command'});
       }
       try {
-        return jsonOk(_controller.connectedScale().scaleInfo?.toJson() ?? {});
+        final scale = _controller.connectedScale();
+        if (scale is! DeviceInformationCapable) return jsonOk({});
+        final information =
+            (scale as DeviceInformationCapable).currentDeviceInformation;
+        final firmwareVersion = information?.firmwareVersion;
+        final batteryLevel = information?.batteryLevel;
+        return jsonOk({
+          'firmwareVersion': ?firmwareVersion,
+          'batteryLevel': ?batteryLevel,
+        });
       } on DeviceNotConnectedException {
         return jsonServiceUnavailable({'error': 'No scale connected'});
       }
