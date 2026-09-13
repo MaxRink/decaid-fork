@@ -97,12 +97,13 @@ void main() {
           .firstWhere((s) => s == ConnectionState.connected)
           .timeout(const Duration(seconds: 2));
       final origin = 'http://127.0.0.1:${server.port}';
-      Future<dynamic> get(String path) async {
+      Future<dynamic> get(String path, {int expectedStatus = 200}) async {
         final response = await (await client.getUrl(
           Uri.parse('$origin$path'),
         )).close();
-        expect(response.statusCode, 200);
-        return jsonDecode(await utf8.decoder.bind(response).join());
+        expect(response.statusCode, expectedStatus);
+        final body = await utf8.decoder.bind(response).join();
+        return expectedStatus == 400 ? body : jsonDecode(body);
       }
 
       final inventory = await get('/api/v1/devices') as List;
@@ -111,6 +112,9 @@ void main() {
       final registry = await get('/api/v1/sensors') as List;
       expect(registry.single['id'], sensor.deviceId);
       expect(registry.single['info']['data'].single['key'], 'humidity');
+      final encodedId = Uri.encodeComponent(sensor.deviceId);
+      final encodedInfo = await get('/api/v1/sensors/$encodedId') as Map;
+      expect(encodedInfo['data'].single['key'], 'humidity');
       channel = IOWebSocketChannel.connect(
         Uri.parse(
           'ws://127.0.0.1:${server.port}/ws/v1/sensors/${sensor.deviceId}/snapshot',
@@ -138,6 +142,27 @@ void main() {
       });
       expect(transports.single.writes.single.data, [1]);
       expect(transports.single.writes.single.withResponse, isTrue);
+
+      final encodedRequest = await client.postUrl(
+        Uri.parse('$origin/api/v1/sensors/$encodedId/execute'),
+      );
+      encodedRequest.headers.contentType = ContentType.json;
+      encodedRequest.write(jsonEncode({'commandId': 'sample', 'params': null}));
+      final encodedResponse = await encodedRequest.close();
+      expect(encodedResponse.statusCode, 200);
+      expect(jsonDecode(await utf8.decoder.bind(encodedResponse).join()), {
+        'status': 'ok',
+        'result': {'humidity': 52},
+      });
+      expect(transports.single.writes, hasLength(2));
+
+      final unknown = await get(
+        '/api/v1/sensors/${Uri.encodeComponent('missing:sensor')}',
+        expectedStatus: 404,
+      );
+      expect(unknown['error'], contains('Sensor not found'));
+      final malformed = await get('/api/v1/sensors/%FF', expectedStatus: 400);
+      expect(malformed, contains('Bad Request'));
     },
   );
 }

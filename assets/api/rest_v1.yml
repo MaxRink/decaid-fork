@@ -1212,6 +1212,7 @@ paths:
           required: true
           schema:
             type: string
+          description: URI path component for the sensor ID; percent-encode reserved characters.
       responses:
         "200":
           description: Full sensor manifest
@@ -1221,6 +1222,8 @@ paths:
                 $ref: "#/components/schemas/SensorManifest"
         "404":
           description: Sensor not found
+        "400":
+          description: Invalid UTF-8 in a percent-encoded sensor ID
 
   /api/v1/sensors/{id}/execute:
     post:
@@ -1232,6 +1235,7 @@ paths:
           required: true
           schema:
             type: string
+          description: URI path component for the sensor ID; percent-encode reserved characters.
       requestBody:
         required: true
         content:
@@ -1259,6 +1263,8 @@ paths:
                     nullable: true
         "404":
           description: Sensor not found
+        "400":
+          description: Invalid UTF-8 in a percent-encoded sensor ID
 
   # REA settings API
   /api/v1/settings:
