@@ -221,10 +221,10 @@ move a consumer's cursor backwards.
 ### Steams
 
 Recorded milk-steaming sessions. Each record is opened when the machine
-enters `steam` and finalized when it leaves. Today no probe is wired in
-production, so `SteamSnapshot.milkTemperature` is `null` on every frame —
-the API surface is scaffolding for skin developers and for future
-probe / FW support. `SteamSettings.stopAtTemperature` (in
+enters `steam` and finalized when it leaves. `SteamSnapshot.milkTemperature`
+uses the preferred Bengle milk probe when its declared temperature channel is
+available, and is `null` when no suitable sensor is registered.
+`SteamSettings.stopAtTemperature` (in
 `/api/v1/workflow`) is the target the future FW-autonomous stop or
 in-app stop will trigger on.
 
