@@ -71,8 +71,8 @@ For browser clients on a different origin, `ETag` is exposed via `Access-Control
 | Method | Path | Description | Handler |
 |--------|------|-------------|---------|
 | GET | `/api/v1/machine/info` | Machine model, firmware, features | `de1handler.dart` |
-| GET | `/api/v1/machine/state` | Current machine state + substate. The steam substates `pausedSteam` and `puffing` report as themselves; both used to report as `idle` | |
-| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …) | |
+| GET | `/api/v1/machine/state` | Current machine state + substate. The steam substates `pausedSteam` and `puffing` report as themselves; both used to report as `idle`. Also returns `deviceId` and process-local `connectionGeneration` for guarded plugin actions | |
+| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). An optional body with `guarded: true` enables source and machine preconditions for brewing-scale idle→espresso starts and espresso→idle stops; stale guards return `409` without writing. An accepted idle stop cancels older queued guarded starts, including a legacy unguarded idle request | |
 | GET | `/api/v1/machine/settings` | DE1 machine settings (temps, flows) | |
 | POST | `/api/v1/machine/settings` | Update machine settings (one grouped, serialized device write per request) | |
 | POST | `/api/v1/machine/shotSettings` | Update shot settings (steam temp, hot water, target volume, group temp) | |
@@ -113,6 +113,8 @@ Raw and managed updates return `application/x-ndjson`. Events are ordered `erasi
 Pre-stream responses are `400` for malformed input, `404` for an unknown artifact, `408` when a request body stalls, `409` for an active update, `413` when a raw upload exceeds 16 MiB or a managed request exceeds 64 KiB, `422` for validation or policy rejection, and `503` when apply requires a machine or the machine write queue is full. Idempotent cancellation returns `202` with `{"operation":{"state":"idle"}}` when no update remains active.
 
 ### Scale
+
+| GET | `/api/v1/scale/connections` | Current brewing and dosing scale connection identities as `{brewing: object|null, dosing: object|null}`. Each object has `deviceId`, `connectionId`, and `selectionId`; the opaque tokens are runtime-scoped and null role entries cannot authorize guarded actions | |
 
 | Method | Path | Description | Handler |
 |--------|------|-------------|---------|

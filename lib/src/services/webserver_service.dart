@@ -19,6 +19,7 @@ import 'package:reaprime/src/models/data/profile_record.dart';
 import 'package:reaprime/src/models/data/shot_state_event.dart';
 import 'package:reaprime/src/models/data/utils.dart';
 import 'package:reaprime/src/models/device/device.dart';
+import 'package:reaprime/src/models/device/device_implementation.dart';
 import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/models/device/scale_calibration.dart';
 import 'package:reaprime/src/models/errors.dart';
@@ -78,6 +79,8 @@ import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 import 'package:stack_trace/stack_trace.dart';
 import 'package:reaprime/src/models/device/de1_rawmessage.dart';
 import 'package:reaprime/src/plugins/plugin_manager.dart';
+import 'package:reaprime/src/plugins/plugin_protocol_device.dart';
+import 'package:uuid/uuid.dart';
 import 'package:reaprime/src/services/feedback_service.dart';
 import 'package:reaprime/src/services/account/decent_account_service.dart';
 import 'package:reaprime/src/services/account/decent_proxy_service.dart';
@@ -169,6 +172,7 @@ Future<void> startWebServer(
     controller: de1Controller,
     settingsController: settingsController,
     scaleController: scaleController,
+    dosingScaleController: dosingScaleController,
     workflowController: workflowController,
   );
   final firmwareHandler = FirmwareHandler(
