@@ -359,10 +359,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MachineSnapshot"
+        "409":
+          description: Machine changed while the snapshot was being read
+  /api/v1/scale/connections:
+    get:
+      summary: Get current brewing and dosing scale connection identities
+      description: |
+        Returns the current connection identity for both scale roles. Each
+        value is either an identity object or null when that role is not
+        connected or lacks a valid identity. The `selectionId` and
+        `connectionId` values are opaque source tokens for guarded brewing
+        machine actions and become stale after reconnect, replacement, or
+        runtime restart.
+      tags: [Scale]
+      responses:
+        "200":
+          description: Current brewing and dosing scale connection projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScaleConnections"
   /api/v1/machine/state/{newState}:
     put:
       summary: Request Machine State Change
-      description: Requests a state change for the espresso machine.
+      description: |
+        Requests a state change for the espresso machine. A body with
+        `guarded: true` enables the plugin source and machine preconditions
+        documented by `GuardedMachineAction`; all other bodies retain the
+        legacy unguarded behavior. Guarded actions support only an
+        idle-to-espresso start and an espresso-to-idle stop. An accepted idle
+        stop cancels older queued guarded starts, including a legacy unguarded
+        idle request.
       tags: [Machine]
       parameters:
         - name: newState
@@ -370,6 +397,14 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/MachineState"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/GuardedMachineAction"
+                - $ref: "#/components/schemas/LegacyMachineStateBody"
       responses:
         "200":
           description: State change successful
@@ -379,6 +414,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MachineStateError"
+        "409":
+          description: Guarded precondition failed; no machine write was attempted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardedMachineActionRejected"
         "503":
           description: Machine write queue is full for non-idle state changes
   /api/v1/machine/profile:
@@ -5973,6 +6014,13 @@ components:
     MachineSnapshot:
       type: object
       properties:
+        deviceId:
+          type: string
+          description: Current machine device identity for guarded plugin actions
+        connectionGeneration:
+          type: integer
+          minimum: 0
+          description: Monotonic process-local machine connection generation
         timestamp:
           type: string
           format: date-time
@@ -6004,6 +6052,78 @@ components:
           type: integer
         steamTemperature:
           type: number
+    ScaleConnections:
+      type: object
+      required: [brewing, dosing]
+      properties:
+        brewing:
+          $ref: "#/components/schemas/ScaleConnection"
+        dosing:
+          $ref: "#/components/schemas/ScaleConnection"
+    ScaleConnection:
+      type: object
+      nullable: true
+      required: [deviceId, connectionId, selectionId]
+      properties:
+        deviceId:
+          type: string
+        connectionId:
+          type: string
+        selectionId:
+          type: string
+    LegacyMachineStateBody:
+      description: "Any legacy JSON body except an object with guarded: true."
+      not:
+        type: object
+        required: [guarded]
+        properties:
+          guarded:
+            type: boolean
+            enum: [true]
+    GuardedMachineAction:
+      type: object
+      required:
+        [guarded, expectedMachineId, expectedMachineGeneration, expectedState,
+         requireInactiveGhc, sourceScale]
+      properties:
+        guarded:
+          type: boolean
+          enum: [true]
+        expectedMachineId:
+          type: string
+        expectedMachineGeneration:
+          type: integer
+          minimum: 0
+        expectedState:
+          type: string
+          enum: [idle, espresso]
+        requireInactiveGhc:
+          type: boolean
+          description: Must be true for espresso starts and false for idle stops
+        sourceScale:
+          type: object
+          required: [role, deviceId, connectionId, selectionId]
+          properties:
+            role:
+              type: string
+              enum: [brewing, dosing]
+            deviceId:
+              type: string
+            connectionId:
+              type: string
+            selectionId:
+              type: string
+    GuardedMachineActionRejected:
+      type: object
+      required: [type, reason]
+      properties:
+        type:
+          type: string
+          enum: [guarded_action_rejected]
+        error:
+          type: string
+        reason:
+          type: string
     MachineState:
       type: string
       enum:

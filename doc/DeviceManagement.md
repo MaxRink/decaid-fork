@@ -1063,6 +1063,25 @@ De1StateManager({
 })
 ```
 
+### Guarded plugin machine actions
+
+Plugin scale buttons use the existing `De1Controller` machine route with an
+opt-in guarded body. The machine GET exposes its current device id and
+connection generation; the read-only scale connection projection supplies the
+brewing role's device id, domain session id, and role selection token.
+
+Guarded idle-to-espresso starts are admitted only when the captured machine and
+brewing role are still current, the machine is still idle, and GHC is
+definitely inactive. They use the existing serialized machine write queue and
+repeat the checks immediately before the request. Guarded espresso-to-idle
+stops capture the machine and use the existing direct idle request so a busy
+write queue cannot delay an emergency stop; GHC inactivity is not required for
+stopping. An accepted idle stop also cancels any older queued guarded start,
+including a legacy unguarded idle request. Machine replacement, same-device reconnect, source detach or
+re-selection, dosing sources, full-gateway starts, and stale state are safe
+no-ops with `409 guarded_action_rejected`. Existing unguarded state requests
+and role-specific tare endpoints remain unchanged.
+
 **Key Methods:**
 - `_handleSnapshot(MachineSnapshot)`: Processes all machine state updates
 - `_handleScalePowerManagement(MachineState)`: Manages scale sleep/wake/scan
@@ -1671,6 +1690,14 @@ Plugin Scales with `disconnectToSleep` mark deliberate sleep before disconnectin
 in display-off power mode. Host Scale recovery pauses until an awake machine
 snapshot, just as radio-disconnect power management waits for wake. Protocol
 failure outside deliberate sleep still follows normal recovery policy.
+
+Role-aware plugin machine actions use `GET /api/v1/scale/connections` to capture
+the brewing scale's current device, connection, and selection identities. Each
+role is returned as that three-field identity object or `null`. Those opaque
+tokens are runtime and connection-generation scoped; reconnecting, replacing,
+or restarting the host makes a previously captured guarded action stale.
+Dosing-scale entries are exposed for inspection but cannot authorize machine
+state writes.
 Intermediate `disconnecting` cleanup preserves the previous connected state for
 terminal disconnect classification; an expected sleep consumes its expectation
 without starting recovery.
