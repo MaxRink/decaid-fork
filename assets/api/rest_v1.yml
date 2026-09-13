@@ -359,10 +359,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MachineSnapshot"
+        "409":
+          description: Machine changed while the snapshot was being read
+  /api/v1/scale/connections:
+    get:
+      summary: Get current brewing and dosing scale connection identities
+      description: |
+        Returns the current connection identity for both scale roles. Each
+        value is either an identity object or null when that role is not
+        connected or lacks a valid identity. The `selectionId` and
+        `connectionId` values are opaque source tokens for guarded brewing
+        machine actions and become stale after reconnect, replacement, or
+        runtime restart.
+      tags: [Scale]
+      responses:
+        "200":
+          description: Current brewing and dosing scale connection projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScaleConnections"
   /api/v1/machine/state/{newState}:
     put:
       summary: Request Machine State Change
-      description: Requests a state change for the espresso machine.
+      description: |
+        Requests a state change for the espresso machine. A body with
+        `guarded: true` enables the plugin source and machine preconditions
+        documented by `GuardedMachineAction`; an omitted guarded key or
+        `guarded: false` retains the legacy unguarded behavior. Malformed JSON
+        and an object whose guarded key is not boolean are rejected with 400;
+        all other valid legacy bodies retain the legacy behavior. Guarded
+        actions support only an idle-to-espresso start and an espresso-to-idle
+        stop. An accepted idle
+        stop cancels older queued guarded starts, including a legacy unguarded
+        idle request.
       tags: [Machine]
       parameters:
         - name: newState
@@ -370,6 +400,14 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/MachineState"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/GuardedMachineAction"
+                - $ref: "#/components/schemas/LegacyMachineStateBody"
       responses:
         "200":
           description: State change successful
@@ -379,6 +417,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MachineStateError"
+        "409":
+          description: Guarded precondition failed; no machine write was attempted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardedMachineActionRejected"
         "503":
           description: Machine write queue is full for non-idle state changes
   /api/v1/machine/profile:
@@ -1071,20 +1115,28 @@ paths:
           description: No machine connected or machine write queue full
 
   # Scale API
-  /api/v1/scale/info:
-    get:
-      summary: Get connected scale information
-      description: Returns metadata for the currently connected scale.
+  /api/v1/scale/dosing/tare:
+    put:
+      summary: Tare the dosing scale
+      description: |
+        Tares the scale reserved for weighing the dose, if one is
+        configured (`dosingScaleId`). Separate from
+        `PUT /api/v1/scale/tare`, which tares the brewing scale and is
+        unchanged by this endpoint's existence.
+
+        The shot-lockout that `blockTareDuringShot` applies to the
+        brewing scale does not apply here: no part of a shot reads this
+        scale, so taring it mid-pour cannot affect stop-at-weight.
       tags: [Scale]
       responses:
         "200":
-          description: Connected scale information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScaleInfo'
-        "503":
-          description: No scale is connected
+          description: Dosing scale tared
+        "404":
+          description: Unknown command
+        "500":
+          description: >
+            No dosing scale connected, or the scale rejected the command.
+            An unsupported operation returns `code: unsupported_operation`.
 
   /api/v1/scale/tare:
     put:
@@ -5504,16 +5556,6 @@ components:
         code:
           type: string
           description: Optional plugin error code, including unsupported_operation.
-    ScaleInfo:
-      type: object
-      properties:
-        firmwareVersion:
-          type: string
-        batteryLevel:
-          type: integer
-          nullable: true
-          minimum: 0
-          maximum: 100
     BleDiagnosticsSnapshot:
       type: object
       required: [timestamp, ble, connection]
@@ -5529,12 +5571,6 @@ components:
           additionalProperties: true
       additionalProperties: true
 
-    ScaleInfo:
-      type: object
-      properties:
-        firmwareVersion:
-          type: string
-          description: Opaque scale firmware version, when reported.
     FlowSmoothingConfig:
       type: object
       required: [windowMs, movingAverageSamples]
@@ -5981,6 +6017,13 @@ components:
     MachineSnapshot:
       type: object
       properties:
+        deviceId:
+          type: string
+          description: Current machine device identity for guarded plugin actions
+        connectionGeneration:
+          type: integer
+          minimum: 0
+          description: Monotonic process-local machine connection generation
         timestamp:
           type: string
           format: date-time
@@ -6012,6 +6055,86 @@ components:
           type: integer
         steamTemperature:
           type: number
+    ScaleConnections:
+      type: object
+      required: [brewing, dosing]
+      properties:
+        brewing:
+          $ref: "#/components/schemas/ScaleConnection"
+        dosing:
+          $ref: "#/components/schemas/ScaleConnection"
+    ScaleConnection:
+      type: object
+      nullable: true
+      required: [deviceId, connectionId, selectionId]
+      properties:
+        deviceId:
+          type: string
+        connectionId:
+          type: string
+        selectionId:
+          type: string
+    LegacyMachineStateBody:
+      description: "A legacy JSON body without guarded, or an object with guarded: false. Malformed JSON and non-boolean guarded values are rejected."
+      oneOf:
+        - type: object
+          not:
+            required: [guarded]
+        - type: object
+          required: [guarded]
+          properties:
+            guarded:
+              type: boolean
+              enum: [false]
+        - type: array
+        - type: string
+          nullable: true
+        - type: number
+        - type: boolean
+    GuardedMachineAction:
+      type: object
+      required:
+        [guarded, expectedMachineId, expectedMachineGeneration, expectedState,
+         requireInactiveGhc, sourceScale]
+      properties:
+        guarded:
+          type: boolean
+          enum: [true]
+        expectedMachineId:
+          type: string
+        expectedMachineGeneration:
+          type: integer
+          minimum: 0
+        expectedState:
+          type: string
+          enum: [idle, espresso]
+        requireInactiveGhc:
+          type: boolean
+          description: Must be true for espresso starts and false for idle stops
+        sourceScale:
+          type: object
+          required: [role, deviceId, connectionId, selectionId]
+          properties:
+            role:
+              type: string
+              enum: [brewing, dosing]
+            deviceId:
+              type: string
+            connectionId:
+              type: string
+            selectionId:
+              type: string
+    GuardedMachineActionRejected:
+      type: object
+      required: [type, reason]
+      properties:
+        type:
+          type: string
+          enum: [guarded_action_rejected]
+        error:
+          type: string
+        reason:
+          type: string
     MachineState:
       type: string
       enum:
@@ -6540,11 +6663,6 @@ components:
           type: string
           nullable: true
           example: "AA:BB:CC:DD:EE:FF"
-        skalePoweredByUsbByDevice:
-          description: Exact Skale device IDs mapped to manual USB power declarations. Boolean values are accepted; false removes the device ID. Only enabled IDs are stored and returned. Omitted IDs default to false; enabled devices suppress battery reads and report the USB source with manual provenance.
-          type: object
-          additionalProperties:
-            type: boolean
         defaultSkinId:
           description: ID of the default WebUI skin to serve
           type: string
@@ -6643,11 +6761,6 @@ components:
           type: string
           nullable: true
           example: "AA:BB:CC:DD:EE:FF"
-        skalePoweredByUsbByDevice:
-          description: Exact Skale device IDs mapped to manual USB power declarations. Only enabled IDs are returned; omitted IDs default to false.
-          type: object
-          additionalProperties:
-            type: boolean
         defaultSkinId:
           description: ID of the default WebUI skin being served
           type: string

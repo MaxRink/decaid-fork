@@ -33,9 +33,13 @@ abstract class SettingsService {
   Future<String?> preferredMachineId();
   Future<void> setPreferredMachineId(String? machineId);
   Future<String?> preferredScaleId();
+
+  /// The scale reserved for weighing the dose. Null when there is only
+  /// one scale, which is the ordinary case.
+  Future<String?> dosingScaleId();
+
+  Future<void> setDosingScaleId(String? scaleId);
   Future<void> setPreferredScaleId(String? scaleId);
-  Future<Map<String, bool>> skalePoweredByUsbByDevice();
-  Future<void> setSkalePoweredByUsbByDevice(Map<String, bool> value);
   Future<String> defaultSkinId();
   Future<void> setDefaultSkinId(String skinId);
   Future<bool> automaticUpdateCheck();
@@ -254,21 +258,17 @@ class SharedPreferencesSettingsService extends SettingsService {
   }
 
   @override
-  Future<Map<String, bool>> skalePoweredByUsbByDevice() async {
-    final ids =
-        await prefs.getStringList(
-          SettingsKeys.skalePoweredByUsbByDevice.name,
-        ) ??
-        [];
-    return {for (final id in ids) id: true};
+  Future<String?> dosingScaleId() async {
+    return await prefs.getString(SettingsKeys.dosingScaleId.name);
   }
 
   @override
-  Future<void> setSkalePoweredByUsbByDevice(Map<String, bool> value) async {
-    await prefs.setStringList(SettingsKeys.skalePoweredByUsbByDevice.name, [
-      for (final entry in value.entries)
-        if (entry.value) entry.key,
-    ]);
+  Future<void> setDosingScaleId(String? scaleId) async {
+    if (scaleId == null) {
+      await prefs.remove(SettingsKeys.dosingScaleId.name);
+    } else {
+      await prefs.setString(SettingsKeys.dosingScaleId.name, scaleId);
+    }
   }
 
   @override
@@ -556,7 +556,7 @@ enum SettingsKeys {
   stopHotWaterAtWeight,
   preferredMachineId,
   preferredScaleId,
-  skalePoweredByUsbByDevice,
+  dosingScaleId,
   defaultSkinId,
   automaticUpdateCheck,
   updateChannel,

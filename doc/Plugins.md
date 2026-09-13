@@ -44,6 +44,46 @@ Decaid plugins are JavaScript modules that extend the functionality of Decaid.
 Plugins run in a sandboxed JavaScript environment and can react to machine events,
 store data, make HTTP requests, and emit events through the Decaid API.
 
+## Guarded brewing-scale machine actions
+
+Role-aware scale plugins read `GET /api/v1/scale/connections` and capture the
+brewing entry's `deviceId`, opaque `connectionId`, and runtime-scoped
+`selectionId`. Each role entry is either that three-field object or `null`.
+They read
+the machine `deviceId`, `connectionGeneration`, and current state from
+`GET /api/v1/machine/state`, then send the captured values with an explicit
+guard to `PUT /api/v1/machine/state/espresso` or `/idle`:
+
+```json
+{
+  "guarded": true,
+  "expectedMachineId": "machine-id",
+  "expectedMachineGeneration": 7,
+  "expectedState": "idle",
+  "requireInactiveGhc": true,
+  "sourceScale": {
+    "role": "brewing",
+    "deviceId": "scale-id",
+    "connectionId": "domain-session-id",
+    "selectionId": "brewing:4"
+  }
+}
+```
+
+Only `guarded: true` activates validation, so an omitted guarded key or
+`guarded: false` retains the existing route behavior. A malformed nonempty JSON
+body or an object with a non-boolean `guarded` value returns `400` without a
+machine write. Starts are accepted only from idle with definitely
+inactive GHC and run through the machine write queue. Stops capture the current
+machine and use the immediate idle path; they do not require inactive GHC.
+An accepted idle stop also cancels any older queued guarded start, including a
+legacy unguarded idle request.
+Machine replacement, reconnect, source detach, role re-selection, dosing
+sources, full gateway starts, and any stale state return `409` with
+`type: "guarded_action_rejected"` and perform no machine write. A dosing scale
+may still use its existing tare endpoint; it cannot request a machine state
+through this guard.
+
 ## Plugin Structure
 
 A Decaid plugin consists of two required files:

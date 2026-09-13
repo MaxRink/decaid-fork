@@ -24,32 +24,53 @@ class DeviceManagementPage extends StatefulWidget {
 
 class _DeviceManagementPageState extends State<DeviceManagementPage> {
   late StreamSubscription<List<Device>> _deviceSubscription;
-  final List<StreamSubscription<DeviceInformation?>>
-  _deviceInformationSubscriptions = [];
+  late StreamSubscription<bool> _scanningSubscription;
   List<Device> _devices = [];
+  bool _scanning = false;
 
   @override
   void initState() {
     super.initState();
     _devices = widget.deviceController.devices;
-    _syncDeviceInformationSubscriptions();
+    _scanning = widget.deviceController.isScanning;
     _deviceSubscription = widget.deviceController.deviceStream.listen((
       devices,
     ) {
       if (mounted) {
         setState(() => _devices = devices);
-        _syncDeviceInformationSubscriptions();
       }
     });
+    _scanningSubscription = widget.deviceController.scanningStream.listen((
+      scanning,
+    ) {
+      if (mounted) {
+        setState(() => _scanning = scanning);
+      }
+    });
+    // A device that has never connected is not in the list, and the dosing
+    // scale is chosen by hand rather than remembered on connect -- so without
+    // a scan there would be nothing to choose from.
+    if (_devices.isEmpty && !_scanning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scan());
+    }
   }
 
   @override
   void dispose() {
     _deviceSubscription.cancel();
-    for (final subscription in _deviceInformationSubscriptions) {
-      subscription.cancel();
-    }
+    _scanningSubscription.cancel();
     super.dispose();
+  }
+
+  Future<void> _scan() async {
+    if (_scanning) return;
+    try {
+      // Discovery only: connecting here would hand a scale to brewing before
+      // the user has said which one weighs the dose.
+      await widget.deviceController.scanForDevices();
+    } catch (_) {
+      // A failed scan leaves whatever was already discovered in place.
+    }
   }
 
   List<Device> get _machines =>
@@ -74,6 +95,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 16,
                 children: [
+                  _buildScanRow(),
                   _buildSection(
                     title: 'Auto-connect Machine',
                     icon: Icons.coffee_outlined,
@@ -88,11 +110,37 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                   _buildSection(
                     title: 'Auto-connect Scale',
                     icon: Icons.scale_outlined,
-                    devices: _scales,
+                    devices: _scales
+                        .where(
+                          (d) =>
+                              d.deviceId !=
+                              widget.settingsController.dosingScaleId,
+                        )
+                        .toList(),
                     selectedId: widget.settingsController.preferredScaleId,
                     emptyLabel: 'scales',
                     onSelected: (id) async {
                       await widget.settingsController.setPreferredScaleId(id);
+                      if (mounted) _showSavedSnackbar();
+                    },
+                  ),
+                  // A second scale for weighing the dose. The one chosen here
+                  // is never picked for brewing, which is what keeps the shot
+                  // on the scale under the cup.
+                  _buildSection(
+                    title: 'Dosing Scale',
+                    icon: Icons.balance_outlined,
+                    devices: _scales
+                        .where(
+                          (d) =>
+                              d.deviceId !=
+                              widget.settingsController.preferredScaleId,
+                        )
+                        .toList(),
+                    selectedId: widget.settingsController.dosingScaleId,
+                    emptyLabel: 'scales',
+                    onSelected: (id) async {
+                      await widget.settingsController.setDosingScaleId(id);
                       if (mounted) _showSavedSnackbar();
                     },
                   ),
@@ -101,6 +149,38 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildScanRow() {
+    return ShadCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _scanning
+                  ? 'Scanning for devices…'
+                  : _devices.isEmpty
+                  ? 'No devices found yet. Scan to see what is nearby.'
+                  : '${_devices.length} device(s) found',
+              style: ShadTheme.of(context).textTheme.muted,
+            ),
+          ),
+          const SizedBox(width: 12),
+          ShadButton.outline(
+            onPressed: _scanning ? null : _scan,
+            leading: _scanning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.bluetooth_searching, size: 16),
+            child: Text(_scanning ? 'Scanning' : 'Scan'),
+          ),
+        ],
       ),
     );
   }
@@ -153,12 +233,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
             ...devices.map(
               (device) => _buildDeviceRadio(
                 name: device.name,
-                subtitle: _deviceSubtitle(device),
+                subtitle: _truncatedId(device.deviceId),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
-                onConfigure: device is UsbPowerConfigurable
-                    ? () => _showScaleSettings(device)
-                    : null,
               ),
             ),
         ],
@@ -166,45 +243,11 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     );
   }
 
-  void _syncDeviceInformationSubscriptions() {
-    for (final subscription in _deviceInformationSubscriptions) {
-      subscription.cancel();
-    }
-    _deviceInformationSubscriptions.clear();
-    for (final device in _devices.whereType<DeviceInformationCapable>()) {
-      _deviceInformationSubscriptions.add(
-        device.deviceInformation.skip(1).listen((_) {
-          if (mounted) setState(() {});
-        }),
-      );
-    }
-  }
-
-  String _deviceSubtitle(Device device) {
-    final lines = <String>[_truncatedId(device.deviceId)];
-    if (device case DeviceInformationCapable capable) {
-      final firmwareVersion = capable.currentDeviceInformation?.firmwareVersion;
-      if (firmwareVersion != null) {
-        lines.add('Firmware: $firmwareVersion');
-      }
-      final batteryLevel = capable.currentDeviceInformation?.batteryLevel;
-      if (batteryLevel != null) {
-        lines.add('Battery: $batteryLevel% (device-reported)');
-      }
-      final powerSource = capable.currentDeviceInformation?.powerSource;
-      if (powerSource == DevicePowerSource.usb) {
-        lines.add('Power: USB (manual setting)');
-      }
-    }
-    return lines.join(' · ');
-  }
-
   Widget _buildDeviceRadio({
     required String name,
     required String subtitle,
     required bool isSelected,
     required VoidCallback onTap,
-    VoidCallback? onConfigure,
   }) {
     return InkWell(
       onTap: onTap,
@@ -240,43 +283,6 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                   Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
-            ),
-            if (onConfigure != null)
-              IconButton(
-                tooltip: 'Configure $name',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: onConfigure,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showScaleSettings(Device device) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => ListenableBuilder(
-        listenable: widget.settingsController,
-        builder: (context, _) => AlertDialog(
-          title: Text('${device.name} settings'),
-          content: SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Powered by USB'),
-            subtitle: const Text(
-              'Enable when this Skale has external power. '
-              'Battery reporting is suppressed while enabled.',
-            ),
-            value: widget.settingsController.isSkalePoweredByUsb(
-              device.deviceId,
-            ),
-            onChanged: (value) => widget.settingsController
-                .setSkalePoweredByUsb(device.deviceId, value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
             ),
           ],
         ),
