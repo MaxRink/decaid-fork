@@ -91,10 +91,19 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.textContaining('Firmware: R029'), findsOneWidget);
+    Finder firmware(String section, String version) => find.descendant(
+      of: find.ancestor(
+        of: find.text(section),
+        matching: find.byType(ShadCard),
+      ),
+      matching: find.textContaining('Firmware: $version'),
+    );
+
+    expect(firmware('Auto-connect Scale', 'R029'), findsOneWidget);
+    expect(firmware('Dosing Scale', 'R029'), findsOneWidget);
     expect(
       find.textContaining('Battery: 82% (device-reported)'),
-      findsOneWidget,
+      findsNWidgets(2),
     );
     expect(find.text('Powered by USB'), findsNothing);
     expect(find.byTooltip('Configure Scale A'), findsOneWidget);
@@ -125,18 +134,22 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.textContaining('Firmware: R030'), findsOneWidget);
+    expect(firmware('Auto-connect Scale', 'R030'), findsOneWidget);
+    expect(firmware('Dosing Scale', 'R030'), findsOneWidget);
 
     replacement.emitFirmware('R031');
     await tester.pump();
 
-    expect(find.textContaining('Firmware: R031'), findsOneWidget);
+    expect(firmware('Auto-connect Scale', 'R031'), findsOneWidget);
+    expect(firmware('Dosing Scale', 'R031'), findsOneWidget);
 
     first.emitFirmware('stale');
     await tester.pump();
 
-    expect(find.textContaining('Firmware: R031'), findsOneWidget);
-    expect(find.textContaining('Firmware: stale'), findsNothing);
+    expect(firmware('Auto-connect Scale', 'R031'), findsOneWidget);
+    expect(firmware('Dosing Scale', 'R031'), findsOneWidget);
+    expect(firmware('Auto-connect Scale', 'stale'), findsNothing);
+    expect(firmware('Dosing Scale', 'stale'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     deviceController.dispose();
