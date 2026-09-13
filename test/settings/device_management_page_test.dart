@@ -121,7 +121,6 @@ void main() {
       ),
       matching: find.textContaining('Firmware: $version'),
     );
-
     expect(firmware('Auto-connect Scale', 'R029'), findsOneWidget);
     expect(firmware('Dosing Scale', 'R029'), findsOneWidget);
     expect(
@@ -129,9 +128,9 @@ void main() {
       findsNWidgets(2),
     );
     expect(find.text('Powered by USB'), findsNothing);
-    expect(find.byTooltip('Configure Scale A'), findsOneWidget);
-    expect(find.byTooltip('Configure Scale B'), findsOneWidget);
-    await tester.tap(find.byTooltip('Configure Scale B'));
+    expect(find.byTooltip('Configure Scale A'), findsNWidgets(2));
+    expect(find.byTooltip('Configure Scale B'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Configure Scale B').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Scale B settings'), findsOneWidget);
@@ -203,7 +202,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Device settings'));
+    await tester.tap(find.byTooltip('Device settings').first);
     expect(launched?.queryParameters['deviceId'], device.deviceId);
     expect(launched?.queryParameters['ui'], '1');
 
@@ -235,7 +234,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Device settings'));
+    await tester.tap(find.byTooltip('Device settings').first);
     await tester.pump();
     expect(find.text('Unable to open device settings.'), findsOneWidget);
 
@@ -267,7 +266,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Device settings'));
+    await tester.tap(find.byTooltip('Device settings').first);
     await tester.pump();
     expect(find.text('Unable to open device settings.'), findsOneWidget);
 

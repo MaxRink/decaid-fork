@@ -413,7 +413,6 @@ last drives actual HTTP/WebSocket clients through DeviceController, SensorContro
 the JS bridge, and a fake GATT edge. Native bridge coverage uses
 UniversalBleTransport to prove CCCD reset and write-property error behavior.
 These checks do not replace hardware or Scale timing acceptance.
-
 ## Keeping Notes Fresh
 
 Add lessons that would have saved debugging time: new footguns, thread-safety constraints, connection-lifecycle changes, non-obvious symptoms, and cross-transport dependencies. Prune stale claims. Prefer fewer, sharper notes over long background.
