@@ -27,8 +27,6 @@ class _FakeDe1 implements De1Interface {
 
 class _FakeScale implements Scale {
   @override
-  ScaleInfo? get scaleInfo => null;
-  @override
   final String deviceId;
 
   _FakeScale(this.deviceId);
