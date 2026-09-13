@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/models/device/device.dart';
+import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -156,6 +157,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 subtitle: _deviceSubtitle(device),
                 isSelected: selectedId == device.deviceId,
                 onTap: () => onSelected(device.deviceId),
+                onConfigure: device is ScaleButtonCapable
+                    ? () => _showScaleSettings(device)
+                    : null,
               ),
             ),
         ],
@@ -193,6 +197,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String subtitle,
     required bool isSelected,
     required VoidCallback onTap,
+    VoidCallback? onConfigure,
   }) {
     return InkWell(
       onTap: onTap,
@@ -229,6 +234,12 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 ],
               ),
             ),
+            if (onConfigure != null)
+              IconButton(
+                tooltip: 'Configure $name',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: onConfigure,
+              ),
           ],
         ),
       ),
@@ -240,6 +251,38 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
       return 'ID: ...${id.substring(id.length - 8)}';
     }
     return 'ID: $id';
+  }
+
+  Future<void> _showScaleSettings(Device device) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: widget.settingsController,
+        builder: (context, _) => AlertDialog(
+          title: Text('${device.name} settings'),
+          content: SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Square button controls espresso'),
+            subtitle: const Text(
+              'Starts espresso on machines without an active group-head '
+              'controller, and stops active espresso on all machines. '
+              'The circle button always tares.',
+            ),
+            value: widget.settingsController.scaleButtonStartsEspressoForDevice(
+              device.deviceId,
+            ),
+            onChanged: (value) => widget.settingsController
+                .setScaleButtonStartsEspressoForDevice(device.deviceId, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSavedSnackbar() {
