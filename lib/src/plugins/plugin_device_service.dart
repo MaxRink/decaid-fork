@@ -131,6 +131,12 @@ class PluginDeviceService implements DeviceDiscoveryService {
     }
 
     final deviceId = 'plugin:$pluginId:$driverId:$instanceId';
+    final deviceSettings = driver?.settingsEndpoint == null
+        ? null
+        : PluginDeviceSettings(
+            pluginId: pluginId,
+            endpointId: driver!.settingsEndpoint!,
+          );
     if (_registrations.values.any((sensor) => sensor.deviceId == deviceId)) {
       throw PluginDeviceException('Device already registered: $deviceId');
     }
@@ -141,6 +147,7 @@ class PluginDeviceService implements DeviceDiscoveryService {
             capabilities: driver!.capabilities,
             invoke: invoke,
             invocationTimeout: scaleInvocationTimeout,
+            deviceSettings: deviceSettings,
           )
         : _PluginSensor(
             deviceId: deviceId,
@@ -149,6 +156,7 @@ class PluginDeviceService implements DeviceDiscoveryService {
             dataChannels: parsePluginDataChannels(definition['dataChannels']),
             commands: parsePluginCommands(definition['commands']),
             invoke: invoke,
+            deviceSettings: deviceSettings,
           );
     _registrations[key] = sensor;
     _publishDevices();
@@ -302,7 +310,8 @@ class PluginDeviceService implements DeviceDiscoveryService {
   }
 }
 
-class _PluginSensor implements Sensor, PluginDeviceAdapter {
+class _PluginSensor
+    implements Sensor, PluginDeviceAdapter, DeviceSettingsCapable {
   _PluginSensor({
     required this.deviceId,
     required this.name,
@@ -310,6 +319,7 @@ class _PluginSensor implements Sensor, PluginDeviceAdapter {
     required List<DataChannel> dataChannels,
     required List<CommandDescriptor> commands,
     required PluginDeviceInvoker invoke,
+    this.deviceSettings,
   }) : _invoke = invoke,
        info = SensorInfo(
          name: name,
@@ -322,6 +332,8 @@ class _PluginSensor implements Sensor, PluginDeviceAdapter {
        };
 
   final PluginDeviceInvoker _invoke;
+  @override
+  final PluginDeviceSettings? deviceSettings;
   final Map<String, DataChannel> _dataChannels;
   final BehaviorSubject<ConnectionState> _connectionState =
       BehaviorSubject.seeded(ConnectionState.discovered);
