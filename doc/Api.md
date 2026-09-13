@@ -427,6 +427,12 @@ same request prevent all fields from being stored (validation is atomic).
 | GET | `/api/v1/sensors/:id` | Get sensor manifest | |
 | POST | `/api/v1/sensors/:id/execute` | Execute sensor command | |
 
+Sensor IDs in REST and WebSocket paths are URI path components. Clients must
+percent-encode reserved characters such as `:` and `%` exactly once; the host
+decodes the component once before sensor lookup. Unknown IDs retain the
+existing not-found response; paths containing invalid UTF-8 percent-encoded
+bytes are rejected with `400` at the HTTP boundary.
+
 Plugin-backed sensors registered through `host.devices` use this same API and
 the device inventory. Their stable IDs have the form
 `plugin:<pluginId>:<driverId>:<instanceId>`. Sensor manifests expose command
