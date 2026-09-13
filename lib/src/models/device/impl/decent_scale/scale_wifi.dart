@@ -13,8 +13,6 @@ import 'package:rxdart/subjects.dart';
 typedef WebSocketTransportFactory = WebSocketTransport Function();
 
 class HDSWifi implements Scale, TransportHandoffScale {
-  @override
-  ScaleInfo? get scaleInfo => null;
   final String host;
   final WebSocketTransportFactory _transportFactory;
   final Duration _recognitionTimeout;
