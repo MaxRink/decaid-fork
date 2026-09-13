@@ -137,10 +137,12 @@ channels:
       during a transient removal, resuming when that id returns. No status
       frame is emitted while the sensor is absent. Opening the socket for an id
       that is not present still returns an error frame and closes the socket.
+      Paths containing invalid UTF-8 percent-encoded bytes are rejected at the
+      HTTP boundary.
     address: ws/v1/sensors/{id}/snapshot
     parameters:
       id:
-        description: Unique sensor identifier.
+        description: Unique sensor identifier as a percent-encoded URI path component.
     messages:
       sensorSnapshotMessage:
         $ref: '#/components/messages/SensorSnapshot'
