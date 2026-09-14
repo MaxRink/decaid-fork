@@ -9,6 +9,13 @@ Decaid exposes REST and WebSocket APIs on port 8080. Full OpenAPI specs are in [
 
 For skin development, see [`doc/Skins.md`](Skins.md). For plugin development, see [`doc/Plugins.md`](Plugins.md).
 
+External sensor IDs in REST and WebSocket paths are opaque URI path
+components. Clients percent-encode them once; the host decodes them once at
+the sensor route boundary. This preserves literal reserved characters,
+Unicode, plus signs, and percent-bearing IDs. Invalid UTF-8 receives `400` at
+the HTTP boundary. Host-assigned UUID resource IDs keep their existing route
+contracts.
+
 The #809 work-in-progress manifest schema includes `transport.ble`, Scale
 capabilities, and BLE matchers. Public non-BLE Scale registration is implemented;
 runtime BLE binding and full API acceptance remain incomplete. See
@@ -419,12 +426,6 @@ same request prevent all fields from being stored (validation is atomic).
 | GET | `/api/v1/sensors` | List connected sensors | `sensors_handler.dart` |
 | GET | `/api/v1/sensors/:id` | Get sensor manifest | |
 | POST | `/api/v1/sensors/:id/execute` | Execute sensor command | |
-
-Sensor IDs in REST and WebSocket paths are URI path components. Clients must
-percent-encode reserved characters such as `:` and `%` exactly once; the host
-decodes the component once before sensor lookup. Unknown IDs retain the
-existing not-found response; paths containing invalid UTF-8 percent-encoded
-bytes are rejected with `400` at the HTTP boundary.
 
 Plugin-backed sensors registered through `host.devices` use this same API and
 the device inventory. Their stable IDs have the form
