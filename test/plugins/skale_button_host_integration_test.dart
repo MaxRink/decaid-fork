@@ -34,7 +34,7 @@ void main() {
     _settings.error = false;
     _settings.delay = Duration.zero;
     _settings.machineDelay = Duration.zero;
-    _settings.scaleConnections = {'brewing': null};
+    _settings.scaleConnections = {'primary': null};
     _settings.machineState = {
       'deviceId': 'machine-1',
       'connectionGeneration': 1,
@@ -153,7 +153,7 @@ void main() {
         expect(guardedBodies.single['guarded'], isTrue);
         expect(
           guardedBodies.single['sourceScale'] as Map,
-          containsPair('role', 'brewing'),
+          containsPair('role', 'primary'),
         );
       } finally {
         HttpOverrides.global = previousOverrides;
