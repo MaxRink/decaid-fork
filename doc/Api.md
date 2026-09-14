@@ -9,6 +9,13 @@ Decaid exposes REST and WebSocket APIs on port 8080. Full OpenAPI specs are in [
 
 For skin development, see [`doc/Skins.md`](Skins.md). For plugin development, see [`doc/Plugins.md`](Plugins.md).
 
+External sensor IDs in REST and WebSocket paths are opaque URI path
+components. Clients percent-encode them once; the host decodes them once at
+the sensor route boundary. This preserves literal reserved characters,
+Unicode, plus signs, and percent-bearing IDs. Invalid UTF-8 receives `400` at
+the HTTP boundary. Host-assigned UUID resource IDs keep their existing route
+contracts.
+
 The #809 work-in-progress manifest schema includes `transport.ble`, Scale
 capabilities, and BLE matchers. Public non-BLE Scale registration is implemented;
 runtime BLE binding and full API acceptance remain incomplete. See
@@ -122,7 +129,7 @@ Pre-stream responses are `400` for malformed input, `404` for an unknown artifac
 | PUT | `/api/v1/scale/timer/stop` | Stop scale timer | |
 | PUT | `/api/v1/scale/timer/reset` | Reset scale timer | |
 
-`GET /api/v1/scale/info` is scoped to the currently connected scale. It returns `503` when no scale is connected and `{}` when connected metadata is not yet known. `firmwareVersion`, when present, is an opaque value reported by the scale (for example `R029`). This endpoint is separate from device inventory.
+`GET /api/v1/scale/info` is scoped to the currently connected scale. It returns `503` when no scale is connected and `{}` when connected metadata is not yet known. `firmwareVersion`, when present, is an opaque value reported by the scale (for example `R029`). `batteryLevel` is optional and nullable; unknown values are omitted, while `0` and `100` are valid readings. This endpoint is separate from device inventory.
 
 ### Devices
 
@@ -218,10 +225,10 @@ move a consumer's cursor backwards.
 ### Steams
 
 Recorded milk-steaming sessions. Each record is opened when the machine
-enters `steam` and finalized when it leaves. Today no probe is wired in
-production, so `SteamSnapshot.milkTemperature` is `null` on every frame —
-the API surface is scaffolding for skin developers and for future
-probe / FW support. `SteamSettings.stopAtTemperature` (in
+enters `steam` and finalized when it leaves. `SteamSnapshot.milkTemperature`
+uses the preferred Bengle milk probe when its declared temperature channel is
+available, and is `null` when no suitable sensor is registered.
+`SteamSettings.stopAtTemperature` (in
 `/api/v1/workflow`) is the target the future FW-autonomous stop or
 in-app stop will trigger on.
 

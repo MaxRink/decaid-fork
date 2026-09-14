@@ -147,6 +147,36 @@ cancellation.
 
 **Field triage:** `ScaleWatch` logs sightings at INFO. `Background device watch started` with no `Preferred scale … sighted` → scan/screen problem (this footgun, or unfiltered-scan screen-off suspension). `sighted` with no connect → connect-path problem.
 
+## Decent Scale / HDS Profile Negotiation (#839)
+
+**Symptom:** An original full-height Decent Scale connects and streams weight, then drops with Android GATT 133 during a periodic write; repeated disconnects shortly after the DE1 enters sleep.
+
+**Root cause:** `DecentScale` mixed the shared Decent protocol with HDS-only behaviour — unconditional HDS SoftSleep (`0A 04`), a LED/status write every other 4s maintenance tick, and a trailing heartbeat byte of `01` on tare while heartbeat support is disabled.
+
+**Design:** identity is evidence, capabilities control behaviour. `profile.dart` holds `DecentScaleIdentity`, `DecentScaleCapabilities`, and pure frame parsers; a connection starts conservative and only widens on positive protocol evidence.
+
+- A `0x0A` status response or a 10-byte timestamped weight frame identifies an original Decent Scale (the timestamped variant adds power off and drops the unreliable command buffer).
+- Only a valid `0x22` voltage response promotes to HDS, and that alone grants extended commands and power off, not SoftSleep. HDS firmware v2.5.8 introduced `0x22` but SoftSleep only arrived in v2.6.3, so a voltage probe is not evidence of SoftSleep.
+- SoftSleep is gated separately on trustworthy modern firmware: HDS identity plus a decoded firmware version with major `>= 3`. HDS firmware before 3.0.1 does not report a version at all, so those scales use the shared display-off command while staying connected, rather than risk a `0A 04` they may not understand.
+- Display off, HDS SoftSleep, power off and BLE disconnect are separate. `ScalePowerMode.displayOff` never disconnects a healthy Decent Scale: original, unknown and pre-modern HDS scales all use the shared `0A 00` display-off command and keep weighing.
+- Unidentified scales stay conservative: shared weighing/tare/timer and shared display-off only, never `0A 04`, never power off.
+
+**Rules that came out of this:**
+
+- Maintenance is read-only. No periodic LED/status writes; notification age alone drives re-subscribe (12s) and disconnect (20s).
+- No heartbeat subsystem at all; every heartbeat-control byte is `00`.
+- Negotiation is unawaited so `connected` is still published promptly. Evidence is guarded by a profile-attempt token that is bound into the notification callback and re-armed on every connect and wake, so a late status/voltage frame after sleep, or a stale initialization attempt, cannot promote capabilities on a newer connection. Connection ownership uses a separate connection-attempt token: a superseded `onConnect()` returns before it can cancel the live transport listener or the maintenance loop.
+- Nonessential writes (LED/status, SoftSleep, power off) tolerate transient failures while notifications are still arriving; tare/timer still fail loudly.
+- Sleep never intentionally disconnects a healthy link. `displayOff` sends the shared `0A 00` command and retains the connection; proven HDS SoftSleep is attempted first and falls back to `0A 00` on failure. A failed display-off write is logged and the connection kept - only the transport watchdog tears down a genuinely dead link. Field report #874 showed the old disconnect-on-sleep policy churning a healthy original v1.1 scale after a 30-minute session.
+- Wake restores the same physical connection: `0A 01` LED-on for display-off, `0A 04 00` plus `0A 01` for SoftSleep. Capabilities are re-established only on a genuinely new connection, never merely because the display was toggled.
+- The 50ms duplicate write from the canonical de1app is applied only to profiles with the unreliable command buffer (7-byte weight frames).
+
+**Firmware decode:** status byte 5 is decoded against `{0xFE: 1.0, 0x02: 1.1, 0x03: 1.2}` (the public `pydecentscale` client's table, consistent with the plan's `original-fw=0x02 -> fw=1.1` example). Only v1.0 needs the 50ms duplicate command; only v1.2 supports power off. A timestamped 10-byte weight frame independently proves v1.2+. An unrecognised marker stays conservative.
+
+For modern HDS the same bytes 5-6 are a version: byte 5 is BCD (`majorTens << 4 | majorUnits`), byte 6 packs `minor << 4 | patch`. The low nibbles are raw 0-15, not decimal BCD digit pairs, so 3.1.14 legitimately arrives as `0x03 0x1E`. The 10-byte weight frame's `timestampMillis` is decisecond-resolution on the wire (`minute*600 + second*10 + decisecond`) and is scaled to milliseconds in the parser.
+
+**Known gap:** the marker table comes from a third-party client, not from Decent firmware source. Sub-version labelling needs confirmation against the original full-height hardware before the duplicate/power-off gates are trusted in the field.
+
 ## Gone-Device Error Handling
 
 `UniversalBleTransport._handleGattError()` catches `UniversalBleException` with gone-device codes:
@@ -586,6 +616,17 @@ can outlast 30 s while the machine emits only non-terminal frames, which tripped
 the outer timeout near completion. The stage bound is the only limit on the
 poll loop, so raising it grants more poll iterations and nothing else. A
 genuinely stuck erase still fails.
+
+Skale battery metadata uses the standard Battery Service (`0x180F`) and Battery
+Level characteristic (`0x2A19`). The value is optional device-reported metadata:
+only one-byte values from 0 through 100 are accepted. Failed, empty, malformed,
+or out-of-range reads clear the current value and do not fail the connection.
+Reads run on connect and on an injected 30-minute timer, with a single in-flight
+read and connection-generation fencing to prevent stale values after disconnect
+or reconnect. Historical de1app evidence reports fixed `100%` values on some
+Atomax firmware generations, while the observed R029 unit reports changing
+values, so the app must preserve the device value rather than manufacture a
+fallback percentage.
 
 ## Keeping Notes Fresh
 

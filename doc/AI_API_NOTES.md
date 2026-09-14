@@ -24,6 +24,19 @@ Read this when changing REST endpoints, WebSocket topics, API specs, auth proxy,
 - Content-based hash IDs for profile deduplication (`ProfileController`).
 - ETag / `If-None-Match` support on cacheable resources (#203).
 
+### Opaque external route IDs
+
+Sensor IDs supplied by external plugins are opaque strings: clients
+percent-encode one path component once, and the sensor route boundary decodes
+it once with `decodeOpaquePathComponent` before REST lookup or WebSocket
+subscription/rebind matching. Preserve literal `%`, `%ZZ`, trailing `%`,
+reserved characters, Unicode, plus signs, and `%252F` decode-once behavior;
+invalid UTF-8 is rejected with HTTP 400 at the Shelf boundary.
+
+`Request.url.queryParameters` is already decoded and must not use the path
+helper. Host-assigned UUID resource IDs, plugin/KV/skin/file/command paths,
+and account-proxy normalization retain their existing route contracts.
+
 ### Patch Nullability
 
 `rejectExplicitNulls()` in `json_patch.dart` is the shared helper for refusing an explicit
@@ -55,6 +68,12 @@ safety consequence, and widening it to the sibling numeric fields is a separate 
 change. One consequence worth knowing before widening it: `validatePatchFieldTypes()` requires
 `value is num`, so a numeric *string* such as `"36"` that `parseOptionalDouble()` accepted now
 returns `400`. Nothing in this repo sends one and `type: number` never permitted it.
+## Device inventory and connected-scale metadata
+
+- `GET /api/v1/devices` and `/ws/v1/devices` are inventory-only surfaces. They must not include connection-scoped metadata such as `deviceInfo`, `firmwareVersion`, or `batteryLevel`.
+- Metadata refreshes do not emit inventory updates. Do not add a metadata WebSocket until a concrete live-update need exists.
+- `GET /api/v1/scale/info` reports only the currently connected scale. Disconnected requests return `503`; a connected scale with unknown metadata returns `{}`. `firmwareVersion` is optional and opaque. `batteryLevel` is optional/nullable where supported; unknown values are omitted, and `0`/`100` are valid.
+- Keep connected-scale metadata separate from remembered-device inventory state; use the scale-info endpoint for it.
 
 ### Admission Control
 
