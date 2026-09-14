@@ -5,7 +5,7 @@ primary scale. It uses the simulated device so no hardware is required.
 
 ## Preconditions
 
-- Start Decaid with `scripts/sb-dev.sh --simulate` and wait for the REST server.
+- Start Decaid with `scripts/sb-dev.sh start --platform linux --connect-machine MockDe1 --connect-scale MockScale` and wait for the REST server.
 - Confirm `GET /api/v1/machine/state` reports a connected machine in `idle`.
 - Confirm `GET /api/v1/scale/connections` returns an object with a `primary`
   property. The property is either `null` or an object containing string
