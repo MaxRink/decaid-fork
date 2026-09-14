@@ -392,22 +392,22 @@ load();
             return body.length === 0 ? null : JSON.parse(body);
           }
 
-          async function currentBrewingScale(state) {
+          async function currentPrimaryScale(state) {
             const connections = await apiJson("/scale/connections");
             const connectionId = state.session.connectionId;
             if (typeof connectionId !== "string") return null;
-            const candidate = connections && connections.brewing;
+            const candidate = connections && connections.primary;
             if (candidate && candidate.deviceId === state.deviceId &&
                 candidate.connectionId === connectionId &&
                 typeof candidate.selectionId === "string") {
-              return {role: "brewing", source: candidate};
+              return {role: "primary", source: candidate};
             }
             return null;
           }
 
           async function runButtonAction(state, button, epoch) {
             if (!isActive(state) || state.buttonEpoch !== epoch) return;
-            const role = await currentBrewingScale(state);
+            const role = await currentPrimaryScale(state);
             if (!isActive(state) || state.buttonEpoch !== epoch || !role) return;
             if (button === 1) {
               await command([0x10]);

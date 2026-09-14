@@ -28,7 +28,7 @@ void main() {
     _settings.machineDelay = Duration.zero;
     _settings.holdStartResponse = null;
     _settings.startRequestStarted = null;
-    _settings.scaleConnections = {'brewing': null};
+    _settings.scaleConnections = {'primary': null};
     _settings.machineState = {
       'deviceId': 'MockDe1',
       'connectionGeneration': 1,
@@ -705,7 +705,7 @@ void main() {
   );
 
   test(
-    'Skale brewing square action uses guarded start and stop requests',
+    'Skale primary square action uses guarded start and stop requests',
     () => _withSettings(() async {
       _settings.defaultSquareAction = true;
       final manager = PluginManager(kvStore: FakeKeyValueStoreService());
@@ -733,7 +733,7 @@ void main() {
       await connecting;
       final session = scale as PluginProtocolDevice;
       _settings.scaleConnections = {
-        'brewing': {
+        'primary': {
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
           'selectionId': 'brew-selection',
@@ -752,7 +752,7 @@ void main() {
         'expectedState': 'idle',
         'requireInactiveGhc': true,
         'sourceScale': {
-          'role': 'brewing',
+          'role': 'primary',
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
           'selectionId': 'brew-selection',
@@ -818,7 +818,7 @@ void main() {
       await connecting;
       final session = scale as PluginProtocolDevice;
       _settings.scaleConnections = {
-        'brewing': {
+        'primary': {
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
           'selectionId': 'brew-selection',
@@ -879,7 +879,7 @@ void main() {
       await connecting;
       final session = scale as PluginProtocolDevice;
       _settings.scaleConnections = {
-        'brewing': {
+        'primary': {
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
           'selectionId': 'brew-selection',
@@ -932,7 +932,7 @@ void main() {
       await connecting;
       final session = scale as PluginProtocolDevice;
       _settings.scaleConnections = {
-        'brewing': {
+        'primary': {
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
           'selectionId': 'brew-selection',
