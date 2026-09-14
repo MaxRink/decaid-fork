@@ -113,6 +113,11 @@ GitHub Issues on `decentespresso/decaid` is the canonical issue tracker. Use `gh
 
 ## Naming Reference
 
+For auxiliary scale work, `ScaleController` owns the single primary scale and
+shot-facing behavior. `AuxiliaryScaleRegistry` owns runtime-only auxiliary
+sessions; API handlers may address either role by ID, but auxiliary sessions
+must not alter `preferredScaleId`, shot sequencing, or legacy singular routes.
+
 | Layer | Value |
 |-------|-------|
 | User-facing name | **Decaid** |

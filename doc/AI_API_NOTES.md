@@ -138,6 +138,16 @@ could not produce.
 ## WebSocket Conventions
 
 - WebSocket topics are path-based: `/ws/v1/machine/state`, `/ws/v1/machine/shotState`, `/ws/v1/scale/snapshot`, etc.
+
+Scale paths are split by compatibility boundary: singular `/scale/*` routes
+remain primary-only, while `/scales/{id}/tare` and
+`/ws/v1/scales/{id}/snapshot` address a connected primary or auxiliary scale.
+Scale IDs are opaque URI path components: clients encode once and handlers use
+the shared one-decode helper. Auxiliary sessions are runtime-only and never
+enter shot sequencing or persisted preferences.
+The addressed snapshot stream uses the raw `ScaleSnapshot.toJson()` payload
+for both roles (`timestamp`, `weight`, `batteryLevel`, `timerValue`, `flow`);
+the legacy singular stream retains its existing `WeightSnapshot` payload.
 - `ShotSequencer` emits structured `ShotDecision`s (why a step advanced, why the shot stopped).
 - `SteamSequencer` manages steam session lifecycle (start on entry, finalize on exit).
 - Presence tracking via `PresenceController` — client keep-alive.
