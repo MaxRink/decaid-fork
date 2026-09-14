@@ -364,17 +364,18 @@ paths:
 
   /api/v1/scale/connections:
     get:
-      summary: Get current brewing scale connection identity
+      summary: Get current primary scale connection identity
       description: |
-        Returns the current brewing scale connection identity, or null when no
-        brewing scale with a valid identity is connected. The opaque
+        Returns the current primary scale connection identity, or null when no
+        primary scale with a valid identity is connected. The opaque
         `connectionId` and `selectionId` values become stale after reconnect,
-        replacement, or runtime restart. Dosing scale projection is reserved
-        for a later multi-scale API stage.
+        replacement, or runtime restart. The primary scale is the only
+        Decaid-defined scale role in this API; auxiliary scale meaning remains
+        client-assigned and is not exposed by this endpoint.
       tags: [Scale]
       responses:
         "200":
-          description: Current brewing scale connection projection
+          description: Current primary scale connection projection
           content:
             application/json:
               schema:
@@ -392,8 +393,8 @@ paths:
         Guarded actions support only an idle-to-espresso start and an
         espresso-to-idle stop. An accepted idle stop cancels older queued
         guarded starts, including a legacy unguarded idle request. Dosing
-        sources are rejected with 409; the multi-scale follow-up adds dosing
-        projection and role identification without changing this policy.
+        Sources whose role is not `primary` are rejected with 400; this API
+        does not define a dosing or auxiliary machine-action role.
       tags: [Machine]
       parameters:
         - name: newState
@@ -6027,7 +6028,7 @@ components:
         connectionGeneration:
           type: integer
           minimum: 0
-          description: Per-role connection generation used for guarded machine actions
+          description: Machine connection generation used for guarded machine actions
         timestamp:
           type: string
           format: date-time
@@ -6061,9 +6062,9 @@ components:
           type: number
     ScaleConnections:
       type: object
-      required: [brewing]
+      required: [primary]
       properties:
-        brewing:
+        primary:
           $ref: "#/components/schemas/ScaleConnection"
     ScaleConnection:
       type: object
@@ -6119,7 +6120,7 @@ components:
           properties:
             role:
               type: string
-              enum: [brewing, dosing]
+              enum: [primary]
             deviceId:
               type: string
             connectionId:

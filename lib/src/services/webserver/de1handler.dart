@@ -814,16 +814,16 @@ class De1Handler {
 
   Future<Response> _scaleConnectionsHandler(Request request) async {
     return jsonOk({
-      'brewing': _scaleConnectionProjection(
-        role: 'brewing',
+      'primary': _scaleConnectionProjection(
+        role: 'primary',
         generation: _scaleController.connectionGeneration,
         state: _scaleController.currentConnectionState,
-        scale: _connectedBrewingScaleOrNull(),
+        scale: _connectedPrimaryScaleOrNull(),
       ),
     });
   }
 
-  Scale? _connectedBrewingScaleOrNull() {
+  Scale? _connectedPrimaryScaleOrNull() {
     try {
       if (_scaleController.currentConnectionState !=
           device.ConnectionState.connected) {
@@ -978,7 +978,7 @@ class De1Handler {
     final deviceId = source['deviceId'];
     final connectionId = source['connectionId'];
     final selectionId = source['selectionId'];
-    if ((role != 'brewing' && role != 'dosing') ||
+    if (role != 'primary' ||
         deviceId is! String ||
         deviceId.isEmpty ||
         connectionId is! String ||
@@ -1028,7 +1028,7 @@ class De1Handler {
 
   bool _sourceStillValid(GuardedScaleSource source) {
     try {
-      if (source.role != 'brewing') return false;
+      if (source.role != 'primary') return false;
       final controller = _scaleController;
       if (controller.currentConnectionState !=
               device.ConnectionState.connected ||

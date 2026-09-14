@@ -34,7 +34,7 @@ GuardedMachineAction _action(
   expectedState: expectedState,
   requireInactiveGhc: requireInactiveGhc,
   sourceScale: const GuardedScaleSource(
-    role: 'brewing',
+    role: 'primary',
     deviceId: 'brew-scale',
     connectionId: 'session-1',
     selectionId: 'selection-1',
@@ -103,7 +103,7 @@ void main() {
     await replacement.dispose();
   });
 
-  test('stale source and dosing state are safely rejected', () async {
+  test('stale source and invalid state are safely rejected', () async {
     final stale = await controller.requestGuardedMachineState(
       _action(controller, machine),
       sourceStillValid: () => false,

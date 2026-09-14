@@ -72,8 +72,8 @@ For browser clients on a different origin, `ETag` is exposed via `Access-Control
 |--------|------|-------------|---------|
 | GET | `/api/v1/machine/info` | Machine model, firmware, features | `de1handler.dart` |
 | GET | `/api/v1/machine/state` | Current machine state + substate, plus the captured `deviceId` and `connectionGeneration` used by guarded actions. The steam substates `pausedSteam` and `puffing` report as themselves; both used to report as `idle` | `de1handler.dart` |
-| GET | `/api/v1/scale/connections` | Brewing scale connection identity (`deviceId`, opaque `connectionId`, and `selectionId`), or `null` when unavailable. Dosing projection is reserved for the multi-scale follow-up | `de1handler.dart` |
-| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). `guarded: true` accepts only an identity-fenced idle-to-espresso start or espresso-to-idle stop; stale or dosing sources return 409. Malformed JSON or a non-boolean `guarded` value returns 400. Bodies without `guarded`, with `guarded: false`, and bodyless requests retain legacy behavior | `de1handler.dart` |
+| GET | `/api/v1/scale/connections` | Primary scale connection identity (`deviceId`, opaque `connectionId`, and `selectionId`), or `null` when unavailable | `de1handler.dart` |
+| PUT | `/api/v1/machine/state/{newState}` | Request state change (`idle`, `sleep`, `espresso`, …). `guarded: true` accepts only an identity-fenced idle-to-espresso start or espresso-to-idle stop; stale sources return 409 and non-primary roles return 400. Malformed JSON or a non-boolean `guarded` value returns 400. Bodies without `guarded`, with `guarded: false`, and bodyless requests retain legacy behavior | `de1handler.dart` |
 | GET | `/api/v1/machine/settings` | DE1 machine settings (temps, flows) | |
 | POST | `/api/v1/machine/settings` | Update machine settings (one grouped, serialized device write per request) | |
 | POST | `/api/v1/machine/shotSettings` | Update shot settings (steam temp, hot water, target volume, group temp) | |
@@ -219,10 +219,10 @@ move a consumer's cursor backwards.
 ### Steams
 
 Recorded milk-steaming sessions. Each record is opened when the machine
-enters `steam` and finalized when it leaves. Today no probe is wired in
-production, so `SteamSnapshot.milkTemperature` is `null` on every frame —
-the API surface is scaffolding for skin developers and for future
-probe / FW support. `SteamSettings.stopAtTemperature` (in
+enters `steam` and finalized when it leaves. `SteamSnapshot.milkTemperature`
+uses the preferred Bengle milk probe when its declared temperature channel is
+available, and is `null` when no suitable sensor is registered.
+`SteamSettings.stopAtTemperature` (in
 `/api/v1/workflow`) is the target the future FW-autonomous stop or
 in-app stop will trigger on.
 

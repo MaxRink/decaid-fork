@@ -102,9 +102,9 @@ void main() {
   late ScaleController scales;
   late SettingsController settings;
   late Handler handler;
-  late String brewingConnectionId;
-  late String brewingSelectionId;
-  late TestScale brewingScale;
+  late String primaryConnectionId;
+  late String primarySelectionId;
+  late TestScale primaryScale;
 
   setUp(() async {
     final devices = DeviceController([MockDeviceDiscoveryService()]);
@@ -115,8 +115,8 @@ void main() {
     await controller.initSettled.firstWhere((generation) => generation != null);
 
     scales = ScaleController();
-    brewingScale = TestScale(deviceId: 'brew-scale');
-    await scales.connectToScale(brewingScale);
+    primaryScale = TestScale(deviceId: 'primary-scale');
+    await scales.connectToScale(primaryScale);
     settings = SettingsController(MockSettingsService());
     await settings.loadSettings();
     final de1Handler = De1Handler(
@@ -137,20 +137,20 @@ void main() {
       Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
     );
     final connectionJson = jsonDecode(await connections.readAsString());
-    brewingConnectionId = connectionJson['brewing']['connectionId'] as String;
-    brewingSelectionId = connectionJson['brewing']['selectionId'] as String;
+    primaryConnectionId = connectionJson['primary']['connectionId'] as String;
+    primarySelectionId = connectionJson['primary']['selectionId'] as String;
   });
 
   tearDown(() async {
     scales.dispose();
-    brewingScale.dispose();
+    primaryScale.dispose();
     await controller.dispose();
   });
 
   Map<String, dynamic> guard({
     required String expectedState,
     required bool requireInactiveGhc,
-    String role = 'brewing',
+    String role = 'primary',
   }) => {
     'guarded': true,
     'expectedMachineId': machine.deviceId,
@@ -159,9 +159,9 @@ void main() {
     'requireInactiveGhc': requireInactiveGhc,
     'sourceScale': {
       'role': role,
-      'deviceId': 'brew-scale',
-      'connectionId': brewingConnectionId,
-      'selectionId': brewingSelectionId,
+      'deviceId': 'primary-scale',
+      'connectionId': primaryConnectionId,
+      'selectionId': primarySelectionId,
     },
   };
 
@@ -175,15 +175,15 @@ void main() {
       );
 
   test(
-    'accepts guarded brewing start and retains bodyless legacy stop',
+    'accepts guarded primary start and retains bodyless legacy stop',
     () async {
       final connections = await handler(
         Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
       );
       expect(connections.statusCode, 200);
       final connectionJson = jsonDecode(await connections.readAsString());
-      expect(connectionJson['brewing']['deviceId'], 'brew-scale');
-      expect(connectionJson.containsKey('dosing'), isFalse);
+      expect(connectionJson['primary']['deviceId'], 'primary-scale');
+      expect(connectionJson.keys.toList(), ['primary']);
 
       final state = await handler(
         Request('GET', Uri.parse('http://localhost/api/v1/machine/state')),
@@ -213,22 +213,27 @@ void main() {
     },
   );
 
-  test('rejects a dosing source and full gateway guarded start', () async {
-    final dosing = await request(
-      'espresso',
-      guard(expectedState: 'idle', requireInactiveGhc: true, role: 'dosing'),
-    );
-    expect(dosing.statusCode, 409);
-    expect(machine.requestedStates, isEmpty);
+  test(
+    'rejects non-primary source roles and full gateway guarded start',
+    () async {
+      for (final role in ['brewing', 'dosing', 'auxiliary']) {
+        final response = await request(
+          'espresso',
+          guard(expectedState: 'idle', requireInactiveGhc: true, role: role),
+        );
+        expect(response.statusCode, 400, reason: role);
+      }
+      expect(machine.requestedStates, isEmpty);
 
-    await settings.updateGatewayMode(GatewayMode.full);
-    final full = await request(
-      'espresso',
-      guard(expectedState: 'idle', requireInactiveGhc: true),
-    );
-    expect(full.statusCode, 409);
-    expect(machine.requestedStates, isEmpty);
-  });
+      await settings.updateGatewayMode(GatewayMode.full);
+      final full = await request(
+        'espresso',
+        guard(expectedState: 'idle', requireInactiveGhc: true),
+      );
+      expect(full.statusCode, 409);
+      expect(machine.requestedStates, isEmpty);
+    },
+  );
 
   test('ignores arbitrary non-guarded bodies for compatibility', () async {
     final response = await request('espresso', {'legacy': 'ignored'});
@@ -307,7 +312,7 @@ void main() {
         Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
       );
       final json = jsonDecode(await connections.readAsString());
-      expect(json['brewing'], isNull);
+      expect(json['primary'], isNull);
       pluginScales.dispose();
       plugin.dispose();
     },
@@ -335,7 +340,7 @@ void main() {
         Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
       );
       final projection = jsonDecode(await projectionResponse.readAsString());
-      final source = projection['brewing'] as Map<String, dynamic>;
+      final source = projection['primary'] as Map<String, dynamic>;
       final second = _TypedPluginScale(
         deviceId: 'plugin-scale',
         currentId: 'plugin-session-2',
@@ -352,7 +357,7 @@ void main() {
             'expectedState': 'idle',
             'requireInactiveGhc': true,
             'sourceScale': {
-              'role': 'brewing',
+              'role': 'primary',
               'deviceId': source['deviceId'],
               'connectionId': source['connectionId'],
               'selectionId': source['selectionId'],
