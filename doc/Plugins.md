@@ -170,8 +170,7 @@ function createPlugin(host) {
 
 Plugins that own the primary scale can use `GET /api/v1/scale/connections` to
 capture its current `deviceId`, opaque `connectionId`, and `selectionId`. The
-projection contains the single Decaid-defined `primary` role. Auxiliary scale
-meaning is assigned by clients and is outside this machine-action API.
+projection contains only the primary role in this single-device stage.
 
 Pass the captured identity together with a fresh machine state response when
 requesting a guarded transition:

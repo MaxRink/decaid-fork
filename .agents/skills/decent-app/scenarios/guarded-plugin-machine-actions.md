@@ -5,7 +5,7 @@ primary scale. It uses the simulated device so no hardware is required.
 
 ## Preconditions
 
-- Start Decaid with `scripts/sb-dev.sh start --platform linux --connect-machine MockDe1 --connect-scale MockScale` and wait for the REST server.
+- Start Decaid with `scripts/sb-dev.sh --simulate` and wait for the REST server.
 - Confirm `GET /api/v1/machine/state` reports a connected machine in `idle`.
 - Confirm `GET /api/v1/scale/connections` returns an object with a `primary`
   property. The property is either `null` or an object containing string
@@ -37,8 +37,7 @@ or runtime restart must return `409` and leave the machine unchanged.
 
 Also verify:
 
-- guarded requests with `sourceScale.role: "brewing", "dosing", or
-  "auxiliary"` return `400`;
+- a guarded request with a non-primary `sourceScale.role` returns `409`;
 - a machine in `sleeping`, an active GHC, or a missing machine returns `409`;
 - malformed nonempty JSON and a non-boolean `guarded` key return `400` without
   a machine write;
