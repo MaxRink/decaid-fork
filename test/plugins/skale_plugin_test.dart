@@ -120,7 +120,10 @@ void main() {
   test(
     'Skale host binding limit rejects a second connection without harming the first',
     () => _withSettings(() async {
-      final manager = PluginManager(kvStore: FakeKeyValueStoreService());
+      final manager = PluginManager(
+        kvStore: FakeKeyValueStoreService(),
+        bleRegistry: PluginBleRegistry(activeBindingLimit: 1),
+      );
       addTearDown(manager.dispose);
       await loadSkalePlugin(manager);
       final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
@@ -180,6 +183,100 @@ void main() {
       expect(firstSnapshots.last.weight, closeTo(2, 0.001));
       await first.disconnect();
       await manager.bleService.discard(secondScale);
+    }),
+  );
+
+  test(
+    'Skale keeps primary and two auxiliary bindings independent',
+    () => _withSettings(() async {
+      final manager = PluginManager(
+        kvStore: FakeKeyValueStoreService(),
+        bleRegistry: PluginBleRegistry(activeBindingLimit: 4),
+      );
+      addTearDown(manager.dispose);
+      await loadSkalePlugin(manager);
+      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
+      final driver = manager.bleService.registry
+          .decide(evidence)
+          .drivers
+          .single;
+      final transports = <SkalePluginTransport>[];
+      Future<Scale> create(String id) async =>
+          await manager.bleService.createCandidate(
+                driver: driver,
+                physicalId: id,
+                evidence: evidence,
+                admit: () => true,
+                createTransport: () {
+                  final transport = SkalePluginTransport(id);
+                  transports.add(transport);
+                  return transport;
+                },
+              )
+              as Scale;
+
+      final primary = await create('AA:01');
+      final auxiliaryOne = await create('AA:02');
+      final auxiliaryTwo = await create('AA:03');
+      final connects = [
+        primary.onConnect(),
+        auxiliaryOne.onConnect(),
+        auxiliaryTwo.onConnect(),
+      ];
+      await Future.wait([
+        for (final transport in transports) ...[
+          transport.buttonSubscribed.future,
+          transport.finalEnable.future,
+        ],
+      ]);
+      for (final transport in transports) {
+        transport.emitWeight(skaleFourBytePacket(1));
+      }
+      await Future.wait(connects);
+      final primarySession = primary as PluginProtocolDevice;
+      final auxiliaryOneSession = auxiliaryOne as PluginProtocolDevice;
+      final auxiliaryTwoSession = auxiliaryTwo as PluginProtocolDevice;
+      _settings.scaleConnections = {
+        'primary': {
+          'deviceId': primary.deviceId,
+          'connectionId': primarySession.connectionId,
+          'selectionId': 'primary-selection',
+        },
+        'auxiliary': [
+          {
+            'deviceId': auxiliaryOne.deviceId,
+            'connectionId': auxiliaryOneSession.connectionId,
+            'selectionId': 'auxiliary-one-selection',
+          },
+          {
+            'deviceId': auxiliaryTwo.deviceId,
+            'connectionId': auxiliaryTwoSession.connectionId,
+            'selectionId': 'auxiliary-two-selection',
+          },
+        ],
+      };
+
+      for (final transport in transports) {
+        transport.emitButton(1);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      for (final transport in transports) {
+        expect(
+          transport.writes.where(
+            (write) => write.data.length == 1 && write.data[0] == 0x10,
+          ),
+          hasLength(1),
+        );
+      }
+
+      transports[1].emitButton(2);
+      transports[2].emitButton(2);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(_settings.machineRequests, isEmpty);
+
+      await primary.disconnect();
+      await auxiliaryOne.disconnect();
+      await auxiliaryTwo.disconnect();
     }),
   );
 

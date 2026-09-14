@@ -392,6 +392,16 @@ load();
             return body.length === 0 ? null : JSON.parse(body);
           }
 
+          async function currentScaleRole(state) {
+            const devices = await apiJson("/devices");
+            if (!Array.isArray(devices)) return null;
+            const candidate = devices.find(entry =>
+              entry && entry.id === state.deviceId &&
+              (entry.connectionRole === "primary" ||
+               entry.connectionRole === "auxiliary"));
+            return candidate ? candidate.connectionRole : null;
+          }
+
           async function currentPrimaryScale(state) {
             const connections = await apiJson("/scale/connections");
             const connectionId = state.session.connectionId;
@@ -407,13 +417,15 @@ load();
 
           async function runButtonAction(state, button, epoch) {
             if (!isActive(state) || state.buttonEpoch !== epoch) return;
-            const role = await currentPrimaryScale(state);
+            const role = await currentScaleRole(state);
             if (!isActive(state) || state.buttonEpoch !== epoch || !role) return;
             if (button === 1) {
               await command([0x10]);
               return;
             }
-            if (!state.squareAction) return;
+            if (!state.squareAction || role !== "primary") return;
+            const sourceScale = await currentPrimaryScale(state);
+            if (!isActive(state) || state.buttonEpoch !== epoch || !sourceScale) return;
             const machine = await apiJson("/machine/state");
             if (!isActive(state) || state.buttonEpoch !== epoch || !machine) return;
             const currentState = machine.state && machine.state.state;
@@ -437,7 +449,7 @@ load();
                 expectedMachineGeneration: machine.connectionGeneration,
                 expectedState: currentState,
                 requireInactiveGhc,
-                sourceScale: {role: role.role, ...role.source},
+                sourceScale: {role: "primary", ...sourceScale.source},
               }),
             });
           }

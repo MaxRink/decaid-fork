@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
+import 'package:reaprime/src/controllers/auxiliary_scale_registry.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
@@ -100,6 +101,7 @@ void main() {
   late De1Controller controller;
   late TestDe1 machine;
   late ScaleController scales;
+  late AuxiliaryScaleRegistry auxiliaryScaleRegistry;
   late SettingsController settings;
   late Handler handler;
   late String brewingConnectionId;
@@ -115,6 +117,7 @@ void main() {
     await controller.initSettled.firstWhere((generation) => generation != null);
 
     scales = ScaleController();
+    auxiliaryScaleRegistry = AuxiliaryScaleRegistry();
     brewingScale = TestScale(deviceId: 'brew-scale');
     await scales.connectToScale(brewingScale);
     settings = SettingsController(MockSettingsService());
@@ -131,6 +134,7 @@ void main() {
       controller: scales,
       de1Controller: controller,
       settingsController: settings,
+      auxiliaryScaleRegistry: auxiliaryScaleRegistry,
     ).addRoutes(app);
     handler = app.call;
     final connections = await handler(
@@ -142,6 +146,7 @@ void main() {
   });
 
   tearDown(() async {
+    await auxiliaryScaleRegistry.dispose();
     scales.dispose();
     brewingScale.dispose();
     await controller.dispose();

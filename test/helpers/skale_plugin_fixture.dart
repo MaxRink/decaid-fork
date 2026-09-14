@@ -28,7 +28,10 @@ class SkaleSettingsFixture {
   var error = false;
   var delay = Duration.zero;
   var machineDelay = Duration.zero;
-  Map<String, dynamic> scaleConnections = {'brewing': null};
+  Map<String, dynamic> scaleConnections = {
+    'primary': null,
+    'auxiliary': <Map<String, dynamic>>[],
+  };
   Map<String, dynamic> machineState = {
     'deviceId': 'MockDe1',
     'connectionGeneration': 1,
@@ -45,6 +48,35 @@ class SkaleSettingsFixture {
   Completer<void>? startRequestStarted;
   FutureOr<shelf.Response> Function(shelf.Request request)? apiHandler;
   HttpServer? _server;
+
+  List<Map<String, dynamic>> get connectedScaleInventory {
+    final entries = <Map<String, dynamic>>[];
+    final primary = scaleConnections['primary'];
+    if (primary is Map && primary['deviceId'] is String) {
+      entries.add({
+        'id': primary['deviceId'],
+        'type': 'scale',
+        'state': 'connected',
+        'available': true,
+        'connectionRole': 'primary',
+      });
+    }
+    final auxiliary = scaleConnections['auxiliary'];
+    if (auxiliary is List) {
+      for (final entry in auxiliary.whereType<Map>()) {
+        if (entry['deviceId'] is String) {
+          entries.add({
+            'id': entry['deviceId'],
+            'type': 'scale',
+            'state': 'connected',
+            'available': true,
+            'connectionRole': 'auxiliary',
+          });
+        }
+      }
+    }
+    return entries;
+  }
 
   Future<void> start() async {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -87,6 +119,10 @@ class SkaleSettingsFixture {
         response.write(await hostResponse.readAsString());
       } else if (error) {
         response.statusCode = HttpStatus.internalServerError;
+      } else if (request.method == 'GET' &&
+          request.uri.path == '/api/v1/devices') {
+        response.headers.contentType = ContentType.json;
+        response.write(jsonEncode(connectedScaleInventory));
       } else if (request.method == 'GET' &&
           request.uri.path == '/api/v1/scale/connections') {
         response.headers.contentType = ContentType.json;

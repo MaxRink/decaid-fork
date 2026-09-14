@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
+import 'package:reaprime/src/controllers/auxiliary_scale_registry.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
+import 'package:reaprime/src/models/device/device.dart';
 import 'package:reaprime/src/models/device/machine.dart';
 import 'package:reaprime/src/models/device/scale.dart';
 import 'package:reaprime/src/plugins/plugin_ble_registry.dart';
@@ -62,6 +63,7 @@ void main() {
       await de1.initSettled.firstWhere((generation) => generation != null);
 
       final brewingController = ScaleController();
+      final auxiliaryScaleRegistry = AuxiliaryScaleRegistry();
       final settingsController = SettingsController(MockSettingsService());
       await settingsController.loadSettings();
       final app = Router().plus;
@@ -75,8 +77,8 @@ void main() {
         controller: brewingController,
         de1Controller: de1,
         settingsController: settingsController,
+        auxiliaryScaleRegistry: auxiliaryScaleRegistry,
       ).addRoutes(app);
-      final roleReadWaiters = <Completer<void>>[];
       final guardedBodies = <Map<String, dynamic>>[];
       _settings.apiHandler = (request) async {
         final body = await request.readAsString();
@@ -91,18 +93,8 @@ void main() {
             body: body,
           ),
         );
-        if (request.url.path.endsWith('/scale/connections') &&
-            roleReadWaiters.isNotEmpty) {
-          roleReadWaiters.removeAt(0).complete();
-        }
         return response;
       };
-
-      Future<void> waitForRoleRead() {
-        final waiter = Completer<void>();
-        roleReadWaiters.add(waiter);
-        return waiter.future.timeout(const Duration(seconds: 5));
-      }
 
       final manager = PluginManager(kvStore: FakeKeyValueStoreService());
       await loadSkalePlugin(manager);
@@ -137,27 +129,57 @@ void main() {
         brewingTransport.emitWeight(skaleFourBytePacket(1));
         await brewingConnect;
         await brewingController.adoptScale(brewing);
+        await brewingController.connectionState.firstWhere(
+          (state) => state == ConnectionState.connected,
+        );
+        final projectionResponse = await app.call(
+          shelf.Request(
+            'GET',
+            Uri.parse('http://localhost/api/v1/scale/connections'),
+          ),
+        );
+        expect(projectionResponse.statusCode, HttpStatus.ok);
+        final projection =
+            jsonDecode(await projectionResponse.readAsString())
+                as Map<String, dynamic>;
+        final primaryProjection = Map<String, dynamic>.from(
+          projection['primary'] as Map,
+        );
+        _settings.scaleConnections = {
+          'primary': primaryProjection,
+          'auxiliary': [
+            {
+              'deviceId': 'AA:21',
+              'connectionId': 'auxiliary-1',
+              'selectionId': 'auxiliary-selection-1',
+            },
+            {
+              'deviceId': 'AA:22',
+              'connectionId': 'auxiliary-2',
+              'selectionId': 'auxiliary-selection-2',
+            },
+          ],
+        };
 
-        final brewingCircleRead = waitForRoleRead();
         brewingTransport.emitButton(1);
-        await brewingCircleRead;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
         await _waitFor(() => brewingTransport.writes.any(_isTareWrite));
         expect(brewingTransport.writes.where(_isTareWrite), hasLength(1));
 
-        final brewingSquareRead = waitForRoleRead();
         brewingTransport.emitButton(2);
-        await brewingSquareRead;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
         await _waitFor(() => machine.requestedStates.isNotEmpty);
         expect(machine.requestedStates, [MachineState.espresso]);
         expect(guardedBodies, hasLength(1));
         expect(guardedBodies.single['guarded'], isTrue);
-        expect(
-          guardedBodies.single['sourceScale'] as Map,
-          containsPair('role', 'primary'),
-        );
+        expect(guardedBodies.single['sourceScale'], {
+          'role': 'primary',
+          ...primaryProjection,
+        });
       } finally {
         HttpOverrides.global = previousOverrides;
         _settings.apiHandler = null;
+        await auxiliaryScaleRegistry.dispose();
         brewingController.dispose();
         await manager.dispose();
         await de1.dispose();
