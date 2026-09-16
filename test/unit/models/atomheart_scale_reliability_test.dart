@@ -14,6 +14,8 @@ class _RecordingTransport extends BLETransport {
     ConnectionState.discovered,
   );
   final Completer<void> firstSubscription = Completer<void>();
+  final StreamController<void> _subscriptionChanges =
+      StreamController<void>.broadcast();
   final List<
     ({String service, String characteristic, List<int> data, bool withResponse})
   >
@@ -97,6 +99,21 @@ class _RecordingTransport extends BLETransport {
       characteristic: characteristicUUID,
     ));
     notificationCallbacks[characteristicUUID] = callback;
+    _subscriptionChanges.add(null);
+  }
+
+  Future<void> waitForSubscriptionCount(
+    String characteristic,
+    int count,
+  ) async {
+    while (subscriptions
+            .where(
+              (subscription) => subscription.characteristic == characteristic,
+            )
+            .length <
+        count) {
+      await _subscriptionChanges.stream.first;
+    }
   }
 
   void emit(List<int> data) =>
@@ -137,6 +154,7 @@ class _RecordingTransport extends BLETransport {
 
   @override
   Future<void> dispose() async {
+    await _subscriptionChanges.close();
     await states.close();
   }
 }
@@ -389,6 +407,50 @@ void main() {
       transport.emit(_weightFrame(weightMg: 2000, timerMs: 2000));
       await pumpEventQueue();
       expect(snapshots.last.batteryLevel, 75);
+
+      await snapshotSub.cancel();
+      await transport.dispose();
+    },
+  );
+
+  test(
+    'clears cached battery across reconnects on the same scale instance',
+    () async {
+      final transport = _RecordingTransport();
+      final scale = AtomheartScale(
+        transport: transport,
+        notificationTimeout: const Duration(seconds: 1),
+      );
+      final snapshots = <ScaleSnapshot>[];
+      final snapshotSub = scale.currentSnapshot.listen(snapshots.add);
+
+      final firstConnection = scale.onConnect();
+      await transport.waitForSubscriptionCount(
+        AtomheartScale.dataCharacteristic.long,
+        1,
+      );
+      transport.emit(_weightFrame(weightMg: 1000, timerMs: 0));
+      await firstConnection;
+      transport.emitConfig([0x42, 75, 75]);
+      transport.emit(_weightFrame(weightMg: 1500, timerMs: 1000));
+      await pumpEventQueue();
+      expect(snapshots.last.batteryLevel, 75);
+
+      await scale.disconnect();
+      final reconnect = scale.onConnect();
+      await transport.waitForSubscriptionCount(
+        AtomheartScale.dataCharacteristic.long,
+        2,
+      );
+      transport.emit(_weightFrame(weightMg: 2000, timerMs: 2000));
+      await reconnect;
+      await pumpEventQueue();
+      expect(snapshots.last.batteryLevel, isNull);
+
+      transport.emitConfig([0x42, 64, 64]);
+      transport.emit(_weightFrame(weightMg: 2500, timerMs: 3000));
+      await pumpEventQueue();
+      expect(snapshots.last.batteryLevel, 64);
 
       await snapshotSub.cancel();
       await transport.dispose();

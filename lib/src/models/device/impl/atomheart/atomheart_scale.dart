@@ -262,7 +262,6 @@ class AtomheartScale implements Scale {
   }
 
   static int? parseBatteryFrame(List<int> data) {
-    // Legacy Eclair firmware may append two reserved payload bytes.
     if (data.length != 3 && data.length != 5) return null;
     if (data[0] != 0x42) return null;
 
