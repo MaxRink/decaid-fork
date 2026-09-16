@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/database_failure_view.dart';
+import 'package:reaprime/src/theme/theme.dart';
 import 'package:reaprime/src/ui/startup_failure_shell.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -34,6 +35,7 @@ void main() {
     );
 
     expect(find.byType(ShadAlert), findsAtLeastNWidgets(1));
+    expect(find.byType(ShadButton), findsNothing);
     expect(find.byType(TextButton), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
@@ -49,6 +51,9 @@ void main() {
       const DatabaseFailureApp(logFilePath: '/tmp/support/log.txt'),
     );
 
+    expect(find.byType(ShadApp), findsOneWidget);
+    final context = tester.element(find.byType(DatabaseFailureView));
+    expect(ShadTheme.of(context).colorScheme, isA<DecentColorScheme>());
     expect(find.textContaining('could not be safely opened'), findsOneWidget);
     expect(find.textContaining('left in place'), findsOneWidget);
   });
