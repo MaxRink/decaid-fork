@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/database_failure_view.dart';
+import 'package:reaprime/src/ui/startup_failure_shell.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
-Widget host(Widget child) => MaterialApp(home: child);
+Widget host(Widget child) => StartupFailureShell(child: child);
 
 void main() {
   testWidgets('explains the database could not be opened and data was kept', (
@@ -31,6 +33,7 @@ void main() {
       host(const DatabaseFailureView(logFilePath: '/tmp/support/log.txt')),
     );
 
+    expect(find.byType(ShadAlert), findsAtLeastNWidgets(1));
     expect(find.byType(TextButton), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
@@ -60,8 +63,8 @@ void main() {
     const textScaler = TextScaler.linear(2);
     const viewPadding = EdgeInsets.all(24);
     await tester.pumpWidget(
-      MaterialApp(
-        home: MediaQuery(
+      StartupFailureShell(
+        child: MediaQuery(
           data: const MediaQueryData(
             textScaler: textScaler,
             padding: viewPadding,
