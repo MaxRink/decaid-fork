@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reaprime/src/theme/theme.dart';
 import 'package:reaprime/src/ui/startup_failure_shell.dart';
 import 'package:reaprime/src/ui/webserver_port_conflict_app.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -35,6 +36,16 @@ void main() {
     expect(find.byType(ShadButton), findsNWidgets(2));
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
+  });
+
+  testWidgets('WebServerPortConflictApp is rooted in the Decaid Shad theme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const WebServerPortConflictApp(port: 8080));
+
+    expect(find.byType(ShadApp), findsOneWidget);
+    final context = tester.element(find.byType(WebServerPortConflictScreen));
+    expect(ShadTheme.of(context).colorScheme, isA<DecentColorScheme>());
   });
 
   testWidgets('says the port is still in use when the probe says so', (
