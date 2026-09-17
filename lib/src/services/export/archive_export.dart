@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
 import 'package:reaprime/src/util/temp_archive_files.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -31,76 +30,24 @@ Future<bool> saveArchiveBytes({
 
 enum DeliveryOutcome { saved, cancelled }
 
-class ArchiveDeliveryException implements Exception {
-  final String message;
-  const ArchiveDeliveryException(this.message);
-
-  @override
-  String toString() => 'ArchiveDeliveryException: $message';
-}
-
 typedef ArchiveTarget = ({String outputPath, String finalPath});
-
-const String _stagingPrefix = '.decent-export-';
 
 Future<void> writeArchiveToDestination({
   required String destinationPath,
   required Future<void> Function(ArchiveTarget target) writeArchive,
 }) async {
-  final destination = File(destinationPath);
-  final staging = await Directory(
-    p.dirname(p.absolute(destinationPath)),
-  ).createTemp(_stagingPrefix);
-  final partial = File('${staging.path}${Platform.pathSeparator}archive');
+  final staging = await TempArchiveDir.create('reaprime-export-');
   try {
-    await writeArchive((outputPath: partial.path, finalPath: destinationPath));
-
-    if (!Platform.isWindows || !await destination.exists()) {
-      await partial.rename(destinationPath);
-      return;
+    final staged = File(staging.filePath('archive'));
+    await writeArchive((outputPath: staged.path, finalPath: destinationPath));
+    if (FileSystemEntity.typeSync(destinationPath, followLinks: false) ==
+        FileSystemEntityType.link) {
+      await Link(destinationPath).delete();
     }
-
-    final backupPath = await _freeSiblingPath(destinationPath);
-    await destination.rename(backupPath);
-    try {
-      await partial.rename(destinationPath);
-    } catch (_) {
-      try {
-        await File(backupPath).rename(destinationPath);
-      } catch (_) {
-        throw ArchiveDeliveryException(
-          'the previous file could not be replaced; it is kept at $backupPath',
-        );
-      }
-      rethrow;
-    }
-    try {
-      await File(backupPath).delete();
-    } catch (_) {
-      throw ArchiveDeliveryException(
-        'the archive was saved, but the previous file remains at $backupPath',
-      );
-    }
+    await staged.copy(destinationPath);
   } finally {
-    await _quietDeleteDirectory(staging);
+    await staging.dispose();
   }
-}
-
-Future<void> _quietDeleteDirectory(Directory directory) async {
-  try {
-    if (await directory.exists()) await directory.delete(recursive: true);
-  } catch (_) {}
-}
-
-Future<String> _freeSiblingPath(String base) async {
-  final stamp = DateTime.now().microsecondsSinceEpoch;
-  var candidate = '$base.$stamp.bak';
-  var counter = 0;
-  while (await File(candidate).exists()) {
-    counter++;
-    candidate = '$base.$stamp.$counter.bak';
-  }
-  return candidate;
 }
 
 Future<DeliveryOutcome> deliverArchive({
