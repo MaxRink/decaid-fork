@@ -89,7 +89,7 @@ Future<File> buildSupportPackage({
     if (await drift.exists()) {
       await addFile(drift, 'streamline_bridge.sqlite');
     }
-    for (final suffix in const ['-wal', '-shm']) {
+    for (final suffix in const ['-wal', '-shm', '-journal']) {
       final sidecar = File('${sources.driftFile}$suffix');
       if (await sidecar.exists()) {
         await addFile(sidecar, 'streamline_bridge.sqlite$suffix');
