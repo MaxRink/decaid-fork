@@ -204,6 +204,24 @@ Platform results must be observed independently on each claimed platform.
 
 **Impact:** iOS only; the channel is a no-op elsewhere (`Platform.isIOS` guard). Do not add new `FilePicker.getDirectoryPath()` consumers without routing them through `SecurityScopedFileService`.
 
+## Footgun #6: `File.rename` does not overwrite an existing file on Windows
+
+**Symptom:** a "write to a temporary file, then rename into place" flow works on
+macOS and Linux and fails on Windows with `FileSystemException` whenever the
+destination already exists.
+
+**Root cause:** POSIX `rename(2)` atomically replaces the destination, and Dart's
+`File.rename` inherits that. Windows requires the move to be told to replace, so
+Dart's `File.rename` fails on an existing target.
+
+**Handling:** `writeArchiveToDestination`
+(`lib/src/services/export/archive_export.dart`) writes into a uniquely created
+staging directory beside the destination, then on Windows moves an existing
+destination aside to a collision-free backup, renames the staged archive in, and
+restores the backup if that rename fails. On POSIX it relies on the atomic
+replace and never creates a backup file. Do not assume a rename overwrites
+everywhere.
+
 ## CLI Parameters
 
 The app supports several command-line flags for headless/calibration-station use. See PR #349 and #352 for full details.

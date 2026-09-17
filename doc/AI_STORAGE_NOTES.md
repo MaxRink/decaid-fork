@@ -38,6 +38,7 @@ Gotchas:
 - `Hive.init()` does not register the Flutter `ColorAdapter`/`TimeOfDayAdapter` that `Hive.initFlutter()` did; `main()` calls `ensureFlutterTypeAdaptersRegistered()` after `Hive.init()`.
 - Web UI downloads/extraction use `Directory.createTemp()` under the temp directory, never fixed names (`/tmp` is shared on Linux).
 - Log readers (feedback, export, import report, discovery views) read `<logs>/log.txt` via `AppDirectories.logs`.
+- `AppDirectories.logs` is the whole support/Documents root on mobile, so it is **not** a log-only directory: it also holds the database, the Hive store, plugins, and web-ui. Never walk it. Read `log.txt` and `webview_console.log` by literal name (`lib/src/services/export/support_package.dart`).
 - CI (`pr-checks.yml` Linux build smoke) runs the app with controlled `XDG_DATA_HOME`/`XDG_CONFIG_HOME`, asserts resolved paths, then fresh-starts the app and requires `log.txt` under `XDG_DATA_HOME`.
 
 ## Storage Ownership
@@ -50,6 +51,29 @@ Gotchas:
 | File system | `StorageService` | Data export, log files, skin assets |
 
 Keep these stores independent. A settings reset must not clear account credentials unless explicitly requested.
+
+## Recovery Package Destination Rule
+
+The recovery package reads its own app data as sources, so a destination that
+aliases a source would let a save destroy the thing it is trying to preserve.
+`buildSupportPackage` (`lib/src/services/export/support_package.dart`) rejects a
+destination whose directory holds sources:
+
+- the drift file's directory and the log directory are rejected by **equality**,
+  because their sources are direct children only (the database, `-wal`, `-shm`,
+  and the two log files);
+- the Hive directory is rejected by **containment**, because it is enumerated
+  recursively, so a nested subdirectory is source territory too.
+
+Directories are compared after `resolveSymbolicLinks`, which resolves symlinked
+ancestors and returns the on-disk path, so neither a symlinked parent nor a
+case-only difference on a case-insensitive filesystem slips past a lexical check.
+Per-file path comparison is not sufficient here and was replaced.
+
+The archive is staged in a uniquely created directory beside the destination and
+then renamed into place, so no predictable path (`<destination>.part`) is ever
+opened for writing. A predictable path is itself a hazard: `FileMode.write`
+follows an existing symlink and truncates its target.
 
 ## Account Auth State (gh#696)
 
