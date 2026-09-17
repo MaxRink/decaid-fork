@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:reaprime/src/services/storage/app_directories.dart';
 
 class ResetReport {
@@ -21,6 +22,8 @@ class DatabaseReset {
     : _driftFile = driftFile,
       _hiveDir = hiveDir;
 
+  static const String quarantineSuffix = '.reset-';
+
   final String _driftFile;
   final String? _hiveDir;
 
@@ -41,12 +44,14 @@ class DatabaseReset {
     );
     final moved = <String>[];
     final renameFailures = <String>[];
+    final leftovers = <String>[];
     final renamed = <({String original, String reset})>[];
 
     for (final target in targets) {
+      await _reclaimQuarantine(target, leftovers);
       final entity = FileSystemEntity.typeSync(target, followLinks: false);
       if (entity == FileSystemEntityType.notFound) continue;
-      final resetPath = '$target.reset-$timestamp';
+      final resetPath = '$target$quarantineSuffix$timestamp';
       try {
         if (entity == FileSystemEntityType.directory) {
           await Directory(target).rename(resetPath);
@@ -59,17 +64,10 @@ class DatabaseReset {
       }
     }
 
-    final leftovers = <String>[];
     for (final item in renamed) {
-      try {
-        if (FileSystemEntity.typeSync(item.reset, followLinks: false) ==
-            FileSystemEntityType.directory) {
-          await Directory(item.reset).delete(recursive: true);
-        } else {
-          await File(item.reset).delete();
-        }
+      if (await _deletePath(item.reset)) {
         moved.add(item.original);
-      } catch (_) {
+      } else {
         leftovers.add(item.reset);
       }
     }
@@ -79,5 +77,29 @@ class DatabaseReset {
       renameFailures: List.unmodifiable(renameFailures),
       leftovers: List.unmodifiable(leftovers),
     );
+  }
+
+  Future<void> _reclaimQuarantine(String target, List<String> leftovers) async {
+    final directory = Directory(p.dirname(target));
+    if (!await directory.exists()) return;
+    final prefix = '${p.basename(target)}$quarantineSuffix';
+    await for (final entry in directory.list(followLinks: false)) {
+      if (!p.basename(entry.path).startsWith(prefix)) continue;
+      if (!await _deletePath(entry.path)) leftovers.add(entry.path);
+    }
+  }
+
+  Future<bool> _deletePath(String path) async {
+    try {
+      if (FileSystemEntity.typeSync(path, followLinks: false) ==
+          FileSystemEntityType.directory) {
+        await Directory(path).delete(recursive: true);
+      } else {
+        await File(path).delete();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

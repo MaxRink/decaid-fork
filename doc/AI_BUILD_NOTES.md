@@ -204,23 +204,26 @@ Platform results must be observed independently on each claimed platform.
 
 **Impact:** iOS only; the channel is a no-op elsewhere (`Platform.isIOS` guard). Do not add new `FilePicker.getDirectoryPath()` consumers without routing them through `SecurityScopedFileService`.
 
-## Footgun #6: `File.rename` does not overwrite an existing file on Windows
+## Footgun #6: macOS App Sandbox grants only the selected save URL, not its siblings
 
-**Symptom:** a "write to a temporary file, then rename into place" flow works on
-macOS and Linux and fails on Windows with `FileSystemException` whenever the
-destination already exists.
+**Symptom:** an export that stages a temporary file next to the user's chosen
+save path works on Linux, Docker and CI, then fails in the signed macOS build
+with a permission error.
 
-**Root cause:** POSIX `rename(2)` atomically replaces the destination, and Dart's
-`File.rename` inherits that. Windows requires the move to be told to replace, so
-Dart's `File.rename` fails on an existing target.
+**Root cause:** the macOS build runs with `com.apple.security.app-sandbox` and
+`com.apple.security.files.user-selected.read-write`
+(`macos/Runner/Release.entitlements`). The file picker grants access to the
+selected URL, not to arbitrary files in its directory, so creating a sibling
+temporary file or staging directory is denied. It does not reproduce on Linux
+because the Linux build is unsandboxed.
 
-**Handling:** `writeArchiveToDestination`
-(`lib/src/services/export/archive_export.dart`) writes into a uniquely created
-staging directory beside the destination, then on Windows moves an existing
-destination aside to a collision-free backup, renames the staged archive in, and
-restores the backup if that rename fails. On POSIX it relies on the atomic
-replace and never creates a backup file. Do not assume a rename overwrites
-everywhere.
+**Handling:** stage in the app's own temporary directory (`TempArchiveDir`, i.e.
+`Directory.systemTemp`) and copy the finished file onto the selected path.
+`writeArchiveToDestination` (`lib/src/services/export/archive_export.dart`) does
+exactly this. Do not stage beside a user-selected destination. Do not substitute
+a plain `File.rename` as the final step either: it does not overwrite an
+existing destination on Windows, and it crosses directories that the sandbox may
+not permit.
 
 ## CLI Parameters
 

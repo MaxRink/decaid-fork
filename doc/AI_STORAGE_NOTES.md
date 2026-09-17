@@ -70,10 +70,16 @@ ancestors and returns the on-disk path, so neither a symlinked parent nor a
 case-only difference on a case-insensitive filesystem slips past a lexical check.
 Per-file path comparison is not sufficient here and was replaced.
 
-The archive is staged in a uniquely created directory beside the destination and
-then renamed into place, so no predictable path (`<destination>.part`) is ever
-opened for writing. A predictable path is itself a hazard: `FileMode.write`
-follows an existing symlink and truncates its target.
+The archive is staged in the app's own temporary directory and then copied onto
+the selected path, so no predictable path (`<destination>.part`) is ever opened
+for writing. A predictable path is itself a hazard: `FileMode.write` follows an
+existing symlink and truncates its target. Staging must not happen beside the
+user-selected destination, because the macOS App Sandbox grants only the
+selected URL (see `AI_BUILD_NOTES.md` Footgun #6).
+
+`DatabaseReset.run()` also reclaims `<target>.reset-*` quarantine left by an
+earlier attempt before it touches the live targets, so a retry cannot report
+`isClean` while quarantined data from the previous attempt is still on disk.
 
 ## Account Auth State (gh#696)
 

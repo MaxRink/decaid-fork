@@ -15,7 +15,7 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('stages outside the destination and renames on success', () async {
+  test('stages outside the destination and copies on success', () async {
     final destination = File('${tempDir.path}/archive.zip');
     ArchiveTarget? seen;
 
@@ -29,6 +29,7 @@ void main() {
 
     expect(seen!.finalPath, destination.path);
     expect(seen!.outputPath, isNot(destination.path));
+    expect(seen!.outputPath, isNot(startsWith('${tempDir.path}/')));
     expect(await destination.readAsString(), 'archive');
     expect(await File(seen!.outputPath).exists(), isFalse);
     expect(tempDir.listSync().map((entry) => entry.path), [destination.path]);
@@ -68,20 +69,24 @@ void main() {
     expect(tempDir.listSync().where((e) => e.path.endsWith('.bak')), isEmpty);
   });
 
-  test('a pre-existing partial symlink cannot truncate a source', () async {
+  test('a destination symlink is replaced rather than followed', () async {
     final source = File('${tempDir.path}/streamline_bridge.sqlite')
       ..writeAsStringSync('SOURCE');
-    final destination = File('${tempDir.path}/archive.zip');
-    await Link('${destination.path}.part').create(source.path);
+    final destination = '${tempDir.path}/archive.zip';
+    await Link(destination).create(source.path);
 
     await writeArchiveToDestination(
-      destinationPath: destination.path,
+      destinationPath: destination,
       writeArchive: (target) =>
           File(target.outputPath).writeAsString('archive'),
     );
 
     expect(await source.readAsString(), 'SOURCE');
-    expect(await destination.readAsString(), 'archive');
+    expect(
+      FileSystemEntity.typeSync(destination, followLinks: false),
+      FileSystemEntityType.file,
+    );
+    expect(await File(destination).readAsString(), 'archive');
   });
 
   test('a source file chosen as destination is not destroyed', () async {
