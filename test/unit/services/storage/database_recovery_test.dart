@@ -18,6 +18,7 @@ void main() {
     final drift = File('${temp.path}/streamline_bridge.sqlite')..createSync();
     File('${drift.path}-wal').writeAsStringSync('wal');
     File('${drift.path}-shm').writeAsStringSync('shm');
+    File('${drift.path}-journal').writeAsStringSync('journal');
     final hive = Directory('${temp.path}/store')..createSync();
     File('${hive.path}/value').writeAsStringSync('value');
 
@@ -32,6 +33,7 @@ void main() {
         drift.path,
         '${drift.path}-wal',
         '${drift.path}-shm',
+        '${drift.path}-journal',
         hive.path,
       ]),
     );
@@ -41,6 +43,7 @@ void main() {
     expect(await drift.exists(), isFalse);
     expect(await File('${drift.path}-wal').exists(), isFalse);
     expect(await File('${drift.path}-shm').exists(), isFalse);
+    expect(await File('${drift.path}-journal').exists(), isFalse);
     expect(await hive.exists(), isFalse);
     expect(
       temp.listSync().where((entry) => entry.path.contains('.reset-')),

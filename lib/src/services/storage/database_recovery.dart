@@ -35,7 +35,12 @@ class DatabaseReset {
   }
 
   Future<ResetReport> run() async {
-    final targets = <String>[_driftFile, '$_driftFile-wal', '$_driftFile-shm'];
+    final targets = <String>[
+      _driftFile,
+      '$_driftFile-wal',
+      '$_driftFile-shm',
+      '$_driftFile-journal',
+    ];
     final hiveDir = _hiveDir;
     if (hiveDir != null) targets.add(hiveDir);
     final timestamp = DateTime.now().toUtc().toIso8601String().replaceAll(

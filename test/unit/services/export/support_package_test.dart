@@ -19,6 +19,7 @@ void main() {
   test('writes the expected support package entries', () async {
     final drift = File('${temp.path}/streamline_bridge.sqlite')
       ..writeAsBytesSync([1, 2, 3]);
+    File('${drift.path}-journal').writeAsBytesSync([7, 8]);
     final hive = Directory('${temp.path}/store/a/b')
       ..createSync(recursive: true);
     File('${hive.path}/one.bin').writeAsBytesSync([4, 5]);
@@ -43,6 +44,7 @@ void main() {
     );
     expect(archive.files.map((file) => file.name).toSet(), {
       'streamline_bridge.sqlite',
+      'streamline_bridge.sqlite-journal',
       'store/a/b/one.bin',
       'store/two.bin',
       'log.txt',
@@ -118,6 +120,7 @@ void main() {
     expect(names, containsAll({'streamline_bridge.sqlite', 'manifest.txt'}));
     expect(names, isNot(contains('streamline_bridge.sqlite-wal')));
     expect(names, isNot(contains('streamline_bridge.sqlite-shm')));
+    expect(names, isNot(contains('streamline_bridge.sqlite-journal')));
     expect(names, isNot(contains('webview_console.log')));
   });
 
