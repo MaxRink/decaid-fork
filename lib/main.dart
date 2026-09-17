@@ -73,6 +73,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:reaprime/src/services/storage/hive_store_service.dart';
 import 'package:reaprime/src/database_failure_view.dart';
+import 'package:reaprime/src/services/export/support_package.dart';
+import 'package:reaprime/src/services/storage/database_recovery.dart';
 import 'package:reaprime/src/services/universal_ble_discovery_service.dart';
 import 'package:reaprime/src/services/simulated_device_service.dart';
 import 'package:reaprime/src/services/webserver/data_export/backup_data_sources.dart';
@@ -376,6 +378,9 @@ void main(List<String> args) async {
       DatabaseFailureApp(
         logFilePath: '$logDir/log.txt',
         detail: databaseStartupError.runtimeType.toString(),
+        onSavePackage: saveSupportPackage,
+        onResetDatabase: () async =>
+            (await DatabaseReset.fromAppDirectories()).run(),
       ),
     );
     return;

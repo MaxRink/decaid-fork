@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/database_failure_view.dart';
+import 'package:reaprime/src/services/export/archive_export.dart';
+import 'package:reaprime/src/services/storage/database_recovery.dart';
 import 'package:reaprime/src/theme/theme.dart';
 import 'package:reaprime/src/ui/webserver_port_conflict_app.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -71,9 +73,11 @@ void main() {
       }
 
       await tester.pumpWidget(
-        const DatabaseFailureApp(
+        DatabaseFailureApp(
           logFilePath: '/tmp/log.txt',
           detail: 'StateError',
+          onSavePackage: () async => DeliveryOutcome.cancelled,
+          onResetDatabase: () async => const ResetReport(),
         ),
       );
       await tester.pumpAndSettle();

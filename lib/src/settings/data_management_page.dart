@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,23 +24,14 @@ import 'package:reaprime/src/services/storage/grinder_storage_service.dart';
 import 'package:reaprime/src/services/storage/profile_storage_service.dart';
 import 'package:reaprime/src/settings/backup_import_response.dart';
 import 'package:reaprime/src/services/webserver/data_export/backup_transfer_service.dart';
-import 'package:reaprime/src/util/temp_archive_files.dart';
+import 'package:reaprime/src/services/export/archive_export.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
 import 'package:reaprime/src/util/shot_exporter.dart';
 import 'package:reaprime/src/util/shot_importer.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
-import 'package:share_plus/share_plus.dart';
 
 final Logger _log = Logger("DataManagement");
-
-Uint8List _zipFiles(Map<String, Uint8List> files) {
-  final archive = Archive();
-  files.forEach((name, bytes) {
-    archive.addFile(ArchiveFile(name, bytes.length, bytes));
-  });
-  return Uint8List.fromList(ZipEncoder().encode(archive));
-}
 
 class DataManagementPage extends StatefulWidget {
   const DataManagementPage({
@@ -281,36 +270,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   Future<void> _exportFullBackup() async {
     if (!mounted) return;
-    _showProgressDialog(context, 'Preparing full backup...');
-
-    final tempDir = await TempArchiveDir.create('reaprime-native-export-');
-    final transfer = BackupTransferService();
-    late final File zipFile;
-    try {
-      zipFile = await transfer.downloadExportZip(
-        'http://localhost:8080/api/v1/data/export',
-        tempDir.directory,
-      );
-    } catch (e) {
-      _log.severe("Failed to export full backup", e);
-      _dismissProgressDialog();
-      await tempDir.dispose();
-      if (mounted) {
-        final message = e is BackupTransferException ? e.message : '$e';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to export full backup: $message')),
-        );
-      }
-      return;
-    } finally {
-      transfer.close();
-    }
-
-    if (!mounted) {
-      await tempDir.dispose();
-      return;
-    }
-    _dismissProgressDialog();
 
     final timestamp = DateTime.now()
         .toIso8601String()
@@ -319,62 +278,39 @@ class _DataManagementPageState extends State<DataManagementPage> {
         .first;
     final fileName = 'decent_export_$timestamp.zip';
 
-    if (Platform.isIOS || Platform.isAndroid) {
-      try {
-        final result = await SharePlus.instance.share(
-          ShareParams(
-            files: [XFile(zipFile.path, mimeType: 'application/zip')],
-            subject: 'Decent backup',
+    try {
+      final outcome = await deliverArchive(
+        fileName: fileName,
+        dialogTitle: 'Choose where to save backup',
+        writeArchive: (dest) async {
+          _showProgressDialog(context, 'Preparing full backup...');
+          final transfer = BackupTransferService();
+          try {
+            await transfer.downloadExportZipTo(
+              'http://localhost:8080/api/v1/data/export',
+              File(dest.outputPath),
+            );
+          } finally {
+            transfer.close();
+            _dismissProgressDialog();
+          }
+        },
+      );
+      if (outcome == DeliveryOutcome.saved && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Full backup exported successfully'),
+            backgroundColor: Colors.green,
           ),
         );
-        if (result.status == ShareResultStatus.dismissed) {
-          await tempDir.dispose();
-          return;
-        }
-        Timer(const Duration(minutes: 5), () => tempDir.dispose());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Full backup exported successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        _log.severe("Failed to export full backup", e);
-        await tempDir.dispose();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to export full backup: $e')),
-          );
-        }
       }
-    } else {
-      try {
-        final outputFile = await FilePicker.saveFile(
-          fileName: fileName,
-          dialogTitle: 'Choose where to save backup',
+    } catch (e) {
+      _log.severe("Failed to export full backup", e);
+      if (mounted) {
+        final message = e is BackupTransferException ? e.message : '$e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export full backup: $message')),
         );
-        if (outputFile != null) {
-          await zipFile.copy(outputFile);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Full backup exported successfully'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        _log.severe("Failed to export full backup", e);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to export full backup: $e')),
-          );
-        }
-      } finally {
-        await tempDir.dispose();
       }
     }
   }
@@ -410,7 +346,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       if (hasWebviewLog) {
         files['webview_console.log'] = await webviewLogFile.readAsBytes();
       }
-      zipBytes = await compute(_zipFiles, files);
+      zipBytes = await compute(zipFiles, files);
     } catch (e) {
       _log.severe("Failed to export logs", e);
       _dismissProgressDialog();
@@ -426,12 +362,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
     _dismissProgressDialog();
 
     try {
-      final outputFile = await FilePicker.saveFile(
+      final saved = await saveArchiveBytes(
         fileName: "R1-logs.zip",
         dialogTitle: "Choose where to save logs",
         bytes: zipBytes,
       );
-      if (outputFile != null) {
+      if (saved) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -462,7 +398,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       );
       final jsonData = await exporter.exportJson();
       final jsonBytes = Uint8List.fromList(utf8.encode(jsonData));
-      zipBytes = await compute(_zipFiles, {'shots.json': jsonBytes});
+      zipBytes = await compute(zipFiles, {'shots.json': jsonBytes});
     } catch (e, st) {
       _log.severe("Failed to export shots", e, st);
       _dismissProgressDialog();
@@ -478,12 +414,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
     _dismissProgressDialog();
 
     try {
-      final outputFile = await FilePicker.saveFile(
+      final saved = await saveArchiveBytes(
         fileName: "R1_shots.zip",
         dialogTitle: "Choose where to save shots",
         bytes: zipBytes,
       );
-      if (outputFile != null) {
+      if (saved) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
