@@ -18,21 +18,17 @@ The endpoint validates the declaration before persistence and returns only
 after the host store confirms the write.
 
 The same endpoint serves a small settings page with persistence error
-feedback. It shows USB power and a default-off square-action control. The
-circle button tares only when this device is the currently assigned primary
-scale. The square button starts from idle after a guarded inactive-GHC check
-and stops from espresso through the guarded machine endpoint.
+feedback. Physical button actions are staged separately with the held guarded
+machine-action work; this runtime consumer does not issue machine-control requests.
 The plugin page works independently; the native settings entry requires the
 host #849 plugin-settings UI integration.
 
 Changing between the native and plugin driver representations changes the
 public device identity. Reselect the primary scale after that change; saved
-role settings are not migrated automatically.
+native settings are not migrated automatically.
 
 When the device advertises the standard device-information service, firmware is
 read from `180a/2a26` and published with the session-scoped
-`publishInfo({firmwareVersion, batteryLevel})` method. Button requests include
-the primary assignment, public device ID, host connection ID, and role
-selection ID; stale sessions and changed settings cancel pending actions.
+`publishInfo({firmwareVersion, batteryLevel})` method.
 
 No physical hardware validation is included in this checkpoint.
