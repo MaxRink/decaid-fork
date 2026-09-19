@@ -2,7 +2,6 @@ function createPlugin(host) {
   const service = "0000ff08-0000-1000-8000-00805f9b34fb";
   const weightCharacteristic = "0000ef81-0000-1000-8000-00805f9b34fb";
   const commandCharacteristic = "0000ef80-0000-1000-8000-00805f9b34fb";
-  const buttonCharacteristic = "0000ef82-0000-1000-8000-00805f9b34fb";
   const batteryService = "0000180f-0000-1000-8000-00805f9b34fb";
   const batteryCharacteristic = "00002a19-0000-1000-8000-00805f9b34fb";
   const deviceInformationService = "0000180a-0000-1000-8000-00805f9b34fb";
@@ -11,7 +10,6 @@ function createPlugin(host) {
   const initStepDelay = 1000;
   const batteryRefreshInterval = 30 * 60 * 1000;
   const settingsStoreUrl = "http://127.0.0.1:8080/api/v1/store/kvStore/";
-  const apiBaseUrl = "http://127.0.0.1:8080/api/v1";
   const deviceSettings = new Map();
   const settingsOperations = new Map();
   const instanceControls = new Map();
@@ -50,7 +48,6 @@ function createPlugin(host) {
   <input id="deviceId" type="hidden">
   <p>Device: <span id="deviceLabel"></span></p>
   <label><input id="usbPower" type="checkbox"> USB powered (suppress battery reads)</label>
-  <label><input id="squareAction" type="checkbox"> Square action (default off)</label>
   <button id="save" disabled>Save</button>
   <output id="status" role="status"></output>
 </form>
@@ -59,7 +56,6 @@ const form = document.getElementById("settings");
 const deviceId = document.getElementById("deviceId");
 const deviceLabel = document.getElementById("deviceLabel");
 const usbPower = document.getElementById("usbPower");
-const squareAction = document.getElementById("squareAction");
 const save = document.getElementById("save");
 const status = document.getElementById("status");
 let loadGeneration = 0;
@@ -83,7 +79,6 @@ async function load() {
     const value = await response.json();
     if (generation !== loadGeneration) return;
     usbPower.checked = value.usbPower === true;
-    squareAction.checked = value.squareAction === true;
     loaded = true;
     save.disabled = false;
     status.textContent = "";
@@ -99,7 +94,7 @@ form.addEventListener("submit", async event => {
   try {
     const response = await fetch("device-settings?deviceId=" + encodeURIComponent(deviceId.value), {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({usbPower: usbPower.checked, squareAction: squareAction.checked}),
+      body: JSON.stringify({usbPower: usbPower.checked}),
     });
     if (!response.ok) throw new Error("Settings could not be saved");
     status.textContent = "Saved";
@@ -142,7 +137,7 @@ load();
         );
         if (!response.ok) {
           if (response.status === 404) {
-            const value = {usbPower: false, squareAction: false};
+            const value = {usbPower: false};
             deviceSettings.set(deviceId, value);
             return {value, known: true};
           }
@@ -150,18 +145,15 @@ load();
         }
         const stored = await response.json();
         if (stored == null) {
-          const value = {usbPower: false, squareAction: false};
+          const value = {usbPower: false};
           deviceSettings.set(deviceId, value);
           return {value, known: true};
         }
-        if (typeof stored.usbPower !== "boolean" ||
-            (stored.squareAction !== undefined &&
-             typeof stored.squareAction !== "boolean")) {
+        if (typeof stored.usbPower !== "boolean") {
           return {value: null, known: false};
         }
         const value = {
           usbPower: stored.usbPower,
-          squareAction: stored.squareAction === true,
         };
         deviceSettings.set(deviceId, value);
         return {value, known: true};
@@ -245,12 +237,6 @@ load();
     return value;
   }
 
-  function buttonValue(data) {
-    const bytes = decodeBase64(data);
-    if (!bytes || bytes.length === 0) return null;
-    return bytes[0] === 1 || bytes[0] === 2 ? bytes[0] : null;
-  }
-
   function delay() {
     return new Promise(resolve => setTimeout(resolve, initStepDelay));
   }
@@ -267,15 +253,11 @@ load();
             const state = active;
             if (!isActive(state)) return;
             const enabled = nextSettings.usbPower === true;
-            const squareAction = nextSettings.squareAction === true;
             const pendingBatteryRead = state.batteryReadPromise;
-            if (state.usbPowerKnown && state.usbPower === enabled &&
-                state.squareAction === squareAction) return;
+            if (state.usbPowerKnown && state.usbPower === enabled) return;
             state.settingsEpoch++;
-            state.buttonEpoch++;
             state.usbPowerKnown = true;
             state.usbPower = enabled;
-            state.squareAction = squareAction;
             clearTimeout(state.batteryTimer);
             state.batteryTimer = null;
             state.battery = null;
@@ -298,7 +280,6 @@ load();
             if (!state || state.stopped) return;
             state.stopped = true;
             state.settingsEpoch++;
-            state.buttonEpoch++;
             clearTimeout(state.batteryTimer);
             if (instanceControls.get(deviceId) === applySettings) {
               instanceControls.delete(deviceId);
@@ -385,87 +366,6 @@ load();
             );
           }
 
-          async function apiJson(path, options) {
-            const response = await fetch(apiBaseUrl + path, options);
-            if (!response.ok) throw new Error("Skale machine API request failed");
-            const body = await response.text();
-            return body.length === 0 ? null : JSON.parse(body);
-          }
-
-          async function currentScaleRole(state) {
-            const devices = await apiJson("/devices");
-            if (!Array.isArray(devices)) return null;
-            const candidate = devices.find(entry =>
-              entry && entry.id === state.deviceId &&
-              (entry.connectionRole === "primary" ||
-               entry.connectionRole === "auxiliary"));
-            return candidate ? candidate.connectionRole : null;
-          }
-
-          async function currentPrimaryScale(state) {
-            const connections = await apiJson("/scale/connections");
-            const connectionId = state.session.connectionId;
-            if (typeof connectionId !== "string") return null;
-            const candidate = connections && connections.primary;
-            if (candidate && candidate.deviceId === state.deviceId &&
-                candidate.connectionId === connectionId &&
-                typeof candidate.selectionId === "string") {
-              return {role: "primary", source: candidate};
-            }
-            return null;
-          }
-
-          async function runButtonAction(state, button, epoch) {
-            if (!isActive(state) || state.buttonEpoch !== epoch) return;
-            const role = await currentScaleRole(state);
-            if (!isActive(state) || state.buttonEpoch !== epoch || !role) return;
-            if (button === 1) {
-              await command([0x10]);
-              return;
-            }
-            if (!state.squareAction || role !== "primary") return;
-            const sourceScale = await currentPrimaryScale(state);
-            if (!isActive(state) || state.buttonEpoch !== epoch || !sourceScale) return;
-            const machine = await apiJson("/machine/state");
-            if (!isActive(state) || state.buttonEpoch !== epoch || !machine) return;
-            const currentState = machine.state && machine.state.state;
-            if (currentState !== "idle" && currentState !== "espresso") return;
-            let requireInactiveGhc = false;
-            if (currentState === "idle") {
-              const info = await apiJson("/machine/info");
-              if (!isActive(state) || state.buttonEpoch !== epoch || !info ||
-                  info.GHC !== false || typeof info.version !== "string" ||
-                  typeof info.model !== "string" || typeof info.serialNumber !== "string" ||
-                  !info.version || !info.model || !info.serialNumber) return;
-              requireInactiveGhc = true;
-            }
-            const targetState = currentState === "idle" ? "espresso" : "idle";
-            await apiJson("/machine/state/" + targetState, {
-              method: "PUT",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({
-                guarded: true,
-                expectedMachineId: machine.deviceId,
-                expectedMachineGeneration: machine.connectionGeneration,
-                expectedState: currentState,
-                requireInactiveGhc,
-                sourceScale: {role: "primary", ...sourceScale.source},
-              }),
-            });
-          }
-
-          function queueButtonAction(state, button) {
-            if (!isActive(state)) return;
-            const epoch = state.buttonEpoch;
-            if (button === 1) {
-              state.buttonQueue = state.buttonQueue
-                .then(() => runButtonAction(state, button, epoch))
-                .catch(() => {});
-              return;
-            }
-            runButtonAction(state, button, epoch).catch(() => {});
-          }
-
           return {
             async connect(session) {
               const state = {
@@ -481,10 +381,7 @@ load();
                 firmwareVersion: null,
                 usbPower: false,
                 usbPowerKnown: false,
-                squareAction: false,
                 settingsEpoch: 0,
-                buttonEpoch: 0,
-                buttonQueue: Promise.resolve(),
                 readyForWeight: false,
                 resolve: null,
                 reject: null,
@@ -508,7 +405,6 @@ load();
                 }
                 state.usbPower = usbSetting.value.usbPower;
                 state.usbPowerKnown = true;
-                state.squareAction = usbSetting.value.squareAction;
                 session.gatt.onDisconnect(() => {
                   if (!isActive(state)) return;
                   stop(state);
@@ -530,14 +426,6 @@ load();
                     }
                   } catch (_) {
                     if (isActive(state)) fail(state, new Error("Skale weight publication failed"));
-                  }
-                });
-                await delay();
-                await session.gatt.subscribe(service, buttonCharacteristic, async data => {
-                  if (!isActive(state)) return;
-                  const button = buttonValue(data);
-                  if (button !== null) {
-                    queueButtonAction(state, button);
                   }
                 });
                 await delay();
@@ -598,14 +486,11 @@ load();
       }
       if (request.method !== "POST" || !request.body ||
           typeof request.body.usbPower !== "boolean" ||
-          (request.body.squareAction !== undefined &&
-           typeof request.body.squareAction !== "boolean") ||
-          Object.keys(request.body).some(key => key !== "usbPower" && key !== "squareAction")) {
-        return jsonResponse(400, {error: "usbPower and squareAction must be booleans"});
+          Object.keys(request.body).some(key => key !== "usbPower")) {
+        return jsonResponse(400, {error: "usbPower must be a boolean"});
       }
       const settings = {
         usbPower: request.body.usbPower,
-        squareAction: request.body.squareAction === true,
       };
       return saveSettings(deviceId, settings).then(async () => {
         const update = instanceControls.get(deviceId);

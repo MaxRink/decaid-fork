@@ -1,25 +1,14 @@
-# Skale plugin scale — stage 1 rationale
+# Skale plugin scale runtime consumer
 
-Stage 1 ships one Skale plugin scale at a time through the host's existing
-binding quota. It follows only the currently selected brewing scale. The
-plugin retains session-scoped protocol state, per-device settings, metadata,
-button handling, and connection-epoch fencing so disconnect and reconnect
-cannot let a retired session publish or act.
+The reference driver validates host-owned BLE bindings, Skale weight parsing,
+readiness, reconnect fencing, display/timer/tare commands and session-scoped
+firmware/battery metadata. USB power remains an explicit per-device setting
+persisted through the plugin endpoint and existing KV store.
 
-Dart owns discovery, BLE I/O, permissions, binding lifetime, teardown,
-reconnect, and quotas. JavaScript owns Skale protocol parsing, per-instance
-timers and callbacks, settings, and button policy. The plugin uses the
-brewing entry from `GET /api/v1/scale/connections` when sending a guarded
-action, including the session connection and selection tokens.
+Physical button behavior is staged separately from this runtime consumer.
+Guarded machine actions remain held for human review in #845/#853 and are not
+an implementation or merge prerequisite for this driver. This branch does not
+change the machine-control API or issue machine-control requests.
 
-USB power remains an explicit default-off per-device setting persisted through
-the plugin KV authority. The plugin-owned settings endpoint is the authority
-for USB and square-action settings. A circle press tares the currently
-assigned brewing scale. A brewing square press may request a guarded espresso
-or idle transition under the machine-state and GHC rules; unsupported or
-uncertain state is ignored.
-
-Multiple same-model scales, dosing-role routing, and any expanded binding
-quota are reserved for the follow-up stage. The complete multi-device source
-and test inventory is recorded in the stage handoff rather than included in
-this stage.
+The host owns connection selection, lifecycle and resource limits. Concurrent
+Skale sessions are validated by the separate multi-binding consumer in #859.

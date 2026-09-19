@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -78,9 +77,6 @@ void main() {
 
       final connecting = scale.onConnect();
       await transport.weightSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
-      await transport.buttonSubscribed.future.timeout(
         const Duration(seconds: 5),
       );
       transport.emitWeight([1, 2]);
@@ -187,100 +183,6 @@ void main() {
   );
 
   test(
-    'Skale keeps primary and two auxiliary bindings independent',
-    () => _withSettings(() async {
-      final manager = PluginManager(
-        kvStore: FakeKeyValueStoreService(),
-        bleRegistry: PluginBleRegistry(activeBindingLimit: 4),
-      );
-      addTearDown(manager.dispose);
-      await loadSkalePlugin(manager);
-      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
-      final driver = manager.bleService.registry
-          .decide(evidence)
-          .drivers
-          .single;
-      final transports = <SkalePluginTransport>[];
-      Future<Scale> create(String id) async =>
-          await manager.bleService.createCandidate(
-                driver: driver,
-                physicalId: id,
-                evidence: evidence,
-                admit: () => true,
-                createTransport: () {
-                  final transport = SkalePluginTransport(id);
-                  transports.add(transport);
-                  return transport;
-                },
-              )
-              as Scale;
-
-      final primary = await create('AA:01');
-      final auxiliaryOne = await create('AA:02');
-      final auxiliaryTwo = await create('AA:03');
-      final connects = [
-        primary.onConnect(),
-        auxiliaryOne.onConnect(),
-        auxiliaryTwo.onConnect(),
-      ];
-      await Future.wait([
-        for (final transport in transports) ...[
-          transport.buttonSubscribed.future,
-          transport.finalEnable.future,
-        ],
-      ]);
-      for (final transport in transports) {
-        transport.emitWeight(skaleFourBytePacket(1));
-      }
-      await Future.wait(connects);
-      final primarySession = primary as PluginProtocolDevice;
-      final auxiliaryOneSession = auxiliaryOne as PluginProtocolDevice;
-      final auxiliaryTwoSession = auxiliaryTwo as PluginProtocolDevice;
-      _settings.scaleConnections = {
-        'primary': {
-          'deviceId': primary.deviceId,
-          'connectionId': primarySession.connectionId,
-          'selectionId': 'primary-selection',
-        },
-        'auxiliary': [
-          {
-            'deviceId': auxiliaryOne.deviceId,
-            'connectionId': auxiliaryOneSession.connectionId,
-            'selectionId': 'auxiliary-one-selection',
-          },
-          {
-            'deviceId': auxiliaryTwo.deviceId,
-            'connectionId': auxiliaryTwoSession.connectionId,
-            'selectionId': 'auxiliary-two-selection',
-          },
-        ],
-      };
-
-      for (final transport in transports) {
-        transport.emitButton(1);
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      for (final transport in transports) {
-        expect(
-          transport.writes.where(
-            (write) => write.data.length == 1 && write.data[0] == 0x10,
-          ),
-          hasLength(1),
-        );
-      }
-
-      transports[1].emitButton(2);
-      transports[2].emitButton(2);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(_settings.machineRequests, isEmpty);
-
-      await primary.disconnect();
-      await auxiliaryOne.disconnect();
-      await auxiliaryTwo.disconnect();
-    }),
-  );
-
-  test(
     'Skale initializes display and timer/tare writes without response',
     () => _withSettings(() async {
       final manager = PluginManager(kvStore: FakeKeyValueStoreService());
@@ -305,9 +207,6 @@ void main() {
               )
               as Scale;
       final connecting = scale.onConnect();
-      await transport.buttonSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
       await transport.finalEnable.future.timeout(const Duration(seconds: 5));
       transport.emitWeight(skaleFourBytePacket(1));
       await connecting.timeout(const Duration(seconds: 5));
@@ -374,9 +273,6 @@ void main() {
       final first = await candidate();
       final firstConnecting = first.onConnect();
       final firstTransport = transports.single;
-      await firstTransport.buttonSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
       await firstTransport.finalEnable.future.timeout(
         const Duration(seconds: 5),
       );
@@ -402,9 +298,6 @@ void main() {
         await pumpEventQueue();
       }
       final secondTransport = transports.last;
-      await secondTransport.buttonSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
       await secondTransport.finalEnable.future.timeout(
         const Duration(seconds: 5),
       );
@@ -422,7 +315,7 @@ void main() {
         'endpoint': 'device-settings',
         'method': 'POST',
         'headers': <String, String>{},
-        'body': {'usbPower': false, 'squareAction': false},
+        'body': {'usbPower': false},
         'query': {'deviceId': second.deviceId},
       });
       expect((await settingsResponse)['status'], 200);
@@ -457,9 +350,6 @@ void main() {
               )
               as Scale;
       final connecting = scale.onConnect();
-      await transport.buttonSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
       final readinessFailure = expectLater(connecting, throwsA(isA<Object>()));
       transport.dropLink();
       await readinessFailure;
@@ -493,9 +383,6 @@ void main() {
       final metadata = (scale as DeviceInformationCapable).deviceInformation
           .firstWhere((info) => info?.firmwareVersion == 'R029');
       final connecting = scale.onConnect();
-      await transport.buttonSubscribed.future.timeout(
-        const Duration(seconds: 5),
-      );
       await transport.finalEnable.future.timeout(const Duration(seconds: 5));
       await Future<void>.delayed(const Duration(milliseconds: 20));
       transport.emitWeight(skaleFourBytePacket(3));
@@ -570,7 +457,7 @@ void main() {
   );
 
   test(
-    'Skale device settings page exposes USB and default-off square controls',
+    'Skale device settings page exposes USB without machine controls',
     () => _withSettings(() async {
       final manager = PluginManager(kvStore: FakeKeyValueStoreService());
       addTearDown(manager.dispose);
@@ -592,7 +479,7 @@ void main() {
       expect(response['body'], contains('system-ui'));
       expect(response['body'], contains('deviceName'));
       expect(response['body'], contains('USB powered'));
-      expect(response['body'], contains('Square action (default off'));
+      expect(response['body'], isNot(contains('squareAction')));
     }),
   );
 
@@ -696,7 +583,7 @@ void main() {
         'endpoint': 'device-settings',
         'method': 'POST',
         'headers': <String, String>{},
-        'body': {'usbPower': true, 'squareAction': false},
+        'body': {'usbPower': true},
         'query': {'deviceId': scale.deviceId},
       });
       expect((await responseFuture)['status'], 200);
@@ -751,7 +638,7 @@ void main() {
           'endpoint': 'device-settings',
           'method': 'POST',
           'headers': <String, String>{},
-          'body': {'usbPower': usb, 'squareAction': false},
+          'body': {'usbPower': usb},
           'query': {'deviceId': scale.deviceId},
         });
         return response;
@@ -802,21 +689,20 @@ void main() {
   );
 
   test(
-    'Skale primary square action uses guarded start and stop requests',
+    'Skale square button has no machine action in the runtime consumer',
     () => _withSettings(() async {
       _settings.defaultSquareAction = true;
       final manager = PluginManager(kvStore: FakeKeyValueStoreService());
       addTearDown(manager.dispose);
       await loadSkalePlugin(manager);
       final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
-      final driver = manager.bleService.registry
-          .decide(evidence)
-          .drivers
-          .single;
       final transport = SkalePluginTransport('AA:12');
       final scale =
           await manager.bleService.createCandidate(
-                driver: driver,
+                driver: manager.bleService.registry
+                    .decide(evidence)
+                    .drivers
+                    .single,
                 physicalId: 'AA:12',
                 evidence: evidence,
                 admit: () => true,
@@ -824,7 +710,6 @@ void main() {
               )
               as Scale;
       final connecting = scale.onConnect();
-      await transport.buttonSubscribed.future;
       await transport.finalEnable.future;
       transport.emitWeight(skaleFourBytePacket(1));
       await connecting;
@@ -833,224 +718,11 @@ void main() {
         'primary': {
           'deviceId': scale.deviceId,
           'connectionId': session.connectionId,
-          'selectionId': 'brew-selection',
-        },
-      };
-      transport.emitButton(2);
-      for (var i = 0; i < 20 && _settings.machineRequests.isEmpty; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      expect(_settings.machineRequests, hasLength(1));
-      expect(_settings.machineRequests.single['target'], 'espresso');
-      expect(_settings.machineRequests.single['body'], {
-        'guarded': true,
-        'expectedMachineId': 'MockDe1',
-        'expectedMachineGeneration': 1,
-        'expectedState': 'idle',
-        'requireInactiveGhc': true,
-        'sourceScale': {
-          'role': 'primary',
-          'deviceId': scale.deviceId,
-          'connectionId': session.connectionId,
-          'selectionId': 'brew-selection',
-        },
-      });
-
-      _settings.machineInfo = {
-        'version': '1.0',
-        'model': 'MockDe1',
-        'serialNumber': 'mock',
-        'GHC': true,
-      };
-      transport.emitButton(2);
-      for (var i = 0; i < 20 && _settings.machineRequests.length < 2; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      expect(_settings.machineRequests, hasLength(2));
-      expect(_settings.machineRequests.last['target'], 'idle');
-      expect(
-        (_settings.machineRequests.last['body'] as Map)['requireInactiveGhc'],
-        isFalse,
-      );
-      await scale.disconnect();
-    }),
-  );
-
-  test(
-    'Skale square action ignores unknown machine state and active GHC',
-    () => _withSettings(() async {
-      _settings.defaultSquareAction = true;
-      _settings.machineState = {
-        'deviceId': 'MockDe1',
-        'connectionGeneration': 2,
-        'state': {'state': 'sleeping', 'substate': 'sleeping'},
-      };
-      _settings.machineInfo = {
-        'version': '1.0',
-        'model': 'MockDe1',
-        'serialNumber': 'mock',
-        'GHC': true,
-      };
-      final manager = PluginManager(kvStore: FakeKeyValueStoreService());
-      addTearDown(manager.dispose);
-      await loadSkalePlugin(manager);
-      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
-      final driver = manager.bleService.registry
-          .decide(evidence)
-          .drivers
-          .single;
-      final transport = SkalePluginTransport('AA:13');
-      final scale =
-          await manager.bleService.createCandidate(
-                driver: driver,
-                physicalId: 'AA:13',
-                evidence: evidence,
-                admit: () => true,
-                createTransport: () => transport,
-              )
-              as Scale;
-      final connecting = scale.onConnect();
-      await transport.finalEnable.future;
-      transport.emitWeight(skaleFourBytePacket(1));
-      await connecting;
-      final session = scale as PluginProtocolDevice;
-      _settings.scaleConnections = {
-        'primary': {
-          'deviceId': scale.deviceId,
-          'connectionId': session.connectionId,
-          'selectionId': 'brew-selection',
+          'selectionId': 'primary-selection',
         },
       };
       transport.emitButton(2);
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(_settings.machineRequests, isEmpty);
-
-      _settings.machineState = {
-        'deviceId': 'MockDe1',
-        'connectionGeneration': 3,
-        'state': {'state': 'idle', 'substate': 'idle'},
-      };
-      transport.emitButton(2);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(_settings.machineRequests, isEmpty);
-
-      _settings.machineInfo = {
-        'version': '1.0',
-        'model': 'MockDe1',
-        'serialNumber': 'mock',
-      };
-      transport.emitButton(2);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(_settings.machineRequests, isEmpty);
-      await scale.disconnect();
-    }),
-  );
-
-  test(
-    'Skale serializes square presses and still delivers a stop after start',
-    () => _withSettings(() async {
-      _settings.defaultSquareAction = true;
-      _settings.holdStartResponse = Completer<void>();
-      _settings.startRequestStarted = Completer<void>();
-      final manager = PluginManager(kvStore: FakeKeyValueStoreService());
-      addTearDown(manager.dispose);
-      await loadSkalePlugin(manager);
-      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
-      final driver = manager.bleService.registry
-          .decide(evidence)
-          .drivers
-          .single;
-      final transport = SkalePluginTransport('AA:14');
-      final scale =
-          await manager.bleService.createCandidate(
-                driver: driver,
-                physicalId: 'AA:14',
-                evidence: evidence,
-                admit: () => true,
-                createTransport: () => transport,
-              )
-              as Scale;
-      final connecting = scale.onConnect();
-      await transport.finalEnable.future;
-      transport.emitWeight(skaleFourBytePacket(1));
-      await connecting;
-      final session = scale as PluginProtocolDevice;
-      _settings.scaleConnections = {
-        'primary': {
-          'deviceId': scale.deviceId,
-          'connectionId': session.connectionId,
-          'selectionId': 'brew-selection',
-        },
-      };
-      transport.emitButton(2);
-      await _settings.startRequestStarted!.future.timeout(
-        const Duration(seconds: 5),
-      );
-      transport.emitButton(2);
-      for (var i = 0; i < 100 && _settings.machineRequests.length < 2; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      expect(_settings.machineRequests.map((request) => request['target']), [
-        'espresso',
-        'idle',
-      ]);
-      _settings.holdStartResponse!.complete();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await scale.disconnect();
-    }),
-  );
-
-  test(
-    'Skale setting changes cancel an in-flight square start',
-    () => _withSettings(() async {
-      _settings.defaultSquareAction = true;
-      _settings.machineDelay = const Duration(milliseconds: 100);
-      final manager = PluginManager(kvStore: FakeKeyValueStoreService());
-      addTearDown(manager.dispose);
-      await loadSkalePlugin(manager);
-      final evidence = BleAdvertisementEvidence(serviceUuids: ['ff08']);
-      final driver = manager.bleService.registry
-          .decide(evidence)
-          .drivers
-          .single;
-      final transport = SkalePluginTransport('AA:15');
-      final scale =
-          await manager.bleService.createCandidate(
-                driver: driver,
-                physicalId: 'AA:15',
-                evidence: evidence,
-                admit: () => true,
-                createTransport: () => transport,
-              )
-              as Scale;
-      final connecting = scale.onConnect();
-      await transport.finalEnable.future;
-      transport.emitWeight(skaleFourBytePacket(1));
-      await connecting;
-      final session = scale as PluginProtocolDevice;
-      _settings.scaleConnections = {
-        'primary': {
-          'deviceId': scale.deviceId,
-          'connectionId': session.connectionId,
-          'selectionId': 'brew-selection',
-        },
-      };
-      transport.emitButton(2);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      final responseFuture = manager.registerPendingHttp(
-        skaleManifest().id,
-        'square-disable',
-      );
-      manager.dispatchEvent(skaleManifest().id, 'httpRequest', {
-        'requestId': 'square-disable',
-        'endpoint': 'device-settings',
-        'method': 'POST',
-        'headers': <String, String>{},
-        'body': {'usbPower': false, 'squareAction': false},
-        'query': {'deviceId': scale.deviceId},
-      });
-      expect((await responseFuture)['status'], 200);
-      await Future<void>.delayed(const Duration(milliseconds: 250));
       expect(_settings.machineRequests, isEmpty);
       await scale.disconnect();
     }),
