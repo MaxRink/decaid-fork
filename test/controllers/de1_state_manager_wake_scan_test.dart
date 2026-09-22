@@ -332,6 +332,34 @@ void main() {
     },
   );
 
+  test(
+    'disabling power management applies to the next machine sleep',
+    () async {
+      await settingsController.setScalePowerMode(ScalePowerMode.disconnect);
+      final transport = _ControllerBleTransport();
+      final scale = DecentScale(transport: transport);
+      await scaleController.connectToScale(scale);
+      de1Controller.connect(testDe1);
+      await pump();
+      testDe1.emitStateAndSubstate(MachineState.idle, MachineSubstate.idle);
+      await pump();
+      transport.writes.clear();
+      transport.disconnectCalls = 0;
+
+      await settingsController.setScalePowerMode(ScalePowerMode.disabled);
+      testDe1.emitStateAndSubstate(MachineState.sleeping, MachineSubstate.idle);
+      await pump(6);
+
+      expect(transport.disconnectCalls, 0);
+      expect(transport.nativeState, ConnectionState.connected);
+      expect(transport.writes, isEmpty);
+      expect(connectionManager.scaleSleepMarks, 0);
+
+      await scale.disconnectForHandoff();
+      await transport.dispose();
+    },
+  );
+
   test('wake with watch support and a preferred scale skips the '
       'scale-only burst scan', () async {
     mockScanner.supportsWatch = true;

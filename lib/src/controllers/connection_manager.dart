@@ -2669,7 +2669,13 @@ class ConnectionManager {
     try {
       final scale = scaleController.connectedScale();
       markExpectingDisconnect(scale.deviceId);
-      await scale.disconnect();
+      if (_shuttingDown &&
+          settingsController.scalePowerMode == ScalePowerMode.disabled &&
+          scale is TransportHandoffScale) {
+        await (scale as TransportHandoffScale).disconnectForHandoff();
+      } else {
+        await scale.disconnect();
+      }
     } catch (_) {}
   }
 

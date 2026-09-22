@@ -1067,6 +1067,20 @@ scan and retry controls call `scanAndConnect()`, so they perform a complete
 scan before filling missing slots. The launcher’s **Connect your machine** hero
 opens `LauncherScanPage`, which reuses this scan-first flow.
 
+### Scale Power Settings
+
+`scalePowerMode` controls automatic power management for the primary scale.
+With `disabled` (keep scale on), machine sleep sends no scale power command.
+On graceful app exit, Decaid releases the transport without sending power-off
+when the driver supports `TransportHandoffScale`, including Decent BLE scales.
+Drivers without that capability use their normal disconnect operation.
+Explicit user-requested disconnects and auxiliary-scale cleanup are unchanged.
+
+Settings changes apply to the next machine-state transition or graceful exit;
+no web-server or app restart is needed. Changing the setting does not undo a
+power action already taken while the machine was sleeping. Firmware auto-sleep
+and operating-system force stops remain outside this setting's guarantees.
+
 ### Machine Wake → Scale Reconnect Flow
 
 ```
