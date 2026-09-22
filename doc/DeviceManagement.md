@@ -1519,6 +1519,10 @@ flutter run --dart-define=simulate=machine,scale   # Simulate DE1 and scale
 
 Supported types: `machine` (DE1), `bengle`, `scale`, `sensor` (comma-separated).
 
+`MockScale` resumes weight snapshots after disconnecting and reconnecting,
+including when reconnecting as an auxiliary scale. Calling `onConnect()` on
+an already connected scale preserves an intentional simulated data stall.
+
 `simulate=1` enables every type, so it surfaces both `MockDe1` and
 `MockBengle` simultaneously — `ConnectionManager`'s preferred-device
 policy picks one. For deterministic behavior in tests / CI prefer the

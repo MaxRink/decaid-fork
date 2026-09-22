@@ -40,6 +40,10 @@ class MockScale implements Scale, SimulatedDevice {
 
   @override
   Future<void> onConnect() async {
+    if (_emissionTimer == null) {
+      _stalled = false;
+      _startEmission();
+    }
     _connectionSubject.add(ConnectionState.connected);
   }
 
