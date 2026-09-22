@@ -64,6 +64,36 @@ backgrounded. After ten minutes in the background, it unloads the page and
 reloads the selected skin when the app returns. Skin state that must survive
 this reload should be persisted through the Decaid API or browser storage.
 
+### Camera Access on Android
+
+An installed skin in the embedded Android WebView can request a live camera
+with `navigator.mediaDevices.getUserMedia({video: true, audio: false})`.
+Decaid asks for consent for that skin, then requests Android camera permission
+only when needed. No camera permission is requested during onboarding.
+Microphone and combined camera/microphone requests are denied.
+
+Consent is remembered by skin ID. In the native skin selector, select the skin
+and set **Camera access** to **Ask**, **Allow**, or **Deny**. These settings
+control future requests, not tracks already acquired by a page. Exit/reload
+the skin to end an existing stream; skins should stop their media tracks when
+capture is finished. Android system settings can revoke the app permission.
+
+Only the currently served installed skin's exact `http://localhost:<port>`
+origin is eligible. Remote pages, other ports, live-edit folders, background
+requests and requests invalidated by navigation are denied. Localhost is a
+potentially trustworthy origin for camera APIs; an HTTP LAN address is not.
+Availability still depends on the tablet's camera, Android permission and
+WebView implementation. Handle permission denial and missing cameras in the
+skin rather than assuming capture is available.
+
+`<input type="file" accept="image/*" capture="environment">` requests a
+native confirmation for each capture, including when live-camera access was
+previously allowed. The Android chooser callback does not identify its
+requesting frame, so a remembered origin grant alone is insufficient here.
+Ordinary file selection continues through the system chooser. Only explicitly
+selected files are shared; no new broad gallery/storage permissions are needed.
+This change does not add camera support to iOS or desktop WebViews.
+
 ### Skin Origins and Browser Storage
 
 Each installed skin is served from its own **stable origin** — a port derived
