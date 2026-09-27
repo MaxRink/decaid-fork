@@ -863,6 +863,9 @@ void main() {
           DevicePowerSource.usb,
         );
         expect(transport.batteryReadCount, 0);
+
+        await scale.setUsbPowered(false);
+        expect(scale.currentDeviceInformation, isNull);
       },
     );
 
