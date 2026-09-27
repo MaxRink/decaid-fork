@@ -125,8 +125,11 @@ class Skale2Scale
     if (pendingRead != null) await pendingRead;
     if (powerSourceGeneration != _powerSourceGeneration ||
         _usbPowered ||
-        !_batterySupported ||
         !await _isConnectionActive(connectionGeneration)) {
+      return;
+    }
+    if (!_batterySupported) {
+      _publishDeviceInformation();
       return;
     }
     await _readBatteryLevel(connectionGeneration);
