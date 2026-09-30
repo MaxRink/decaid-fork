@@ -122,5 +122,29 @@ void main() {
       scale.simulateDisconnect();
       await de1.disconnect();
     });
+
+    test('reconnected scale follows its machine without a rescan', () async {
+      final de1 = MockDe1(
+        simulationTickInterval: const Duration(milliseconds: 10),
+      );
+      final scale = MockScale();
+      addTearDown(() async {
+        await scale.disconnect();
+        await de1.disconnect();
+      });
+      scale.attachMachine(de1);
+      await de1.onConnect();
+      await scale.onConnect();
+      await scale.currentSnapshot.first.timeout(const Duration(seconds: 2));
+
+      await scale.disconnect();
+      await scale.onConnect();
+      await de1.requestState(MachineState.hotWater);
+
+      final poured = await scale.currentSnapshot
+          .firstWhere((snapshot) => snapshot.weight > 1.0)
+          .timeout(const Duration(seconds: 3));
+      expect(poured.weight, greaterThan(1.0));
+    });
   });
 }
