@@ -44,7 +44,9 @@ The single BLE transport is `UniversalBleTransport` in `lib/src/services/ble/uni
 Android does not guarantee any Dart, activity, application, or Flutter-engine callback for Settings Force stop, SIGKILL, or other abrupt process death. Those paths can skip cleanup entirely and must not be described as supported. Decaid still pins `universal_ble` 2.2.6, whose Android `onDetachedFromEngine()` does not close active central GATT clients, so native engine-detach cleanup is not shipped with this lifecycle change.
 
 During graceful shutdown, disabled scale power management uses the primary
-scale's existing `TransportHandoffScale.disconnectForHandoff()` when available.
+scale's existing `TransportHandoffScale.disconnectForHandoff()` when available,
+including retirement of an invalidated in-flight connection attempt and
+deferred or quarantined retirement cleanup.
 The normal Decent BLE `disconnect()` may send a power-off command, so it must
 not serve as a transport-only shutdown in keep-on mode. Manual disconnects,
 other power modes and auxiliary cleanup retain their existing behavior.

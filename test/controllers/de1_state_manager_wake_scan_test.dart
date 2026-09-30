@@ -157,6 +157,20 @@ class _ControllerBleTransport extends BLETransport {
   }
 }
 
+class _BlockingControllerBleTransport extends _ControllerBleTransport {
+  _BlockingControllerBleTransport() : super(respondToVoltage: true);
+
+  final discoveryStarted = Completer<void>();
+  final continueDiscovery = Completer<void>();
+
+  @override
+  Future<List<String>> discoverServices() async {
+    discoveryStarted.complete();
+    await continueDiscovery.future;
+    return super.discoverServices();
+  }
+}
+
 class _TestDe1Controller extends De1Controller {
   final BehaviorSubject<De1Interface?> de1Subject = BehaviorSubject.seeded(
     null,
@@ -391,6 +405,48 @@ void main() {
         mode == ScalePowerMode.disconnect,
       );
     });
+  }
+
+  for (final mode in ScalePowerMode.values) {
+    test(
+      'shutdown respects ${mode.name} during an in-flight Decent BLE connect',
+      () async {
+        final transport = _BlockingControllerBleTransport();
+        final scale = DecentScale(transport: transport);
+        addTearDown(transport.dispose);
+        addTearDown(() {
+          if (!transport.continueDiscovery.isCompleted) {
+            transport.continueDiscovery.complete();
+          }
+        });
+        await settingsController.setScalePowerMode(mode);
+        final connecting = connectionManager.connectScale(scale);
+        await transport.discoveryStarted.future;
+        expect(transport.nativeState, ConnectionState.connected);
+
+        final shutdown = connectionManager.shutdown();
+        transport.continueDiscovery.complete();
+        final result = await connecting;
+        await shutdown;
+
+        expect(result.success, isFalse);
+        expect(settingsController.preferredScaleId, isNull);
+        expect(
+          scaleController.currentConnectionState,
+          isNot(ConnectionState.connected),
+        );
+        expect(scale.debugProfile.capabilities.supportsPowerOff, isTrue);
+        expect(transport.disconnectCalls, 1);
+        expect(transport.nativeState, ConnectionState.disconnected);
+        expect(
+          transport.writes.any(
+            (frame) =>
+                frame.length == 7 && frame[1] == 0x0A && frame[2] == 0x02,
+          ),
+          mode != ScalePowerMode.disabled,
+        );
+      },
+    );
   }
 
   test('wake with watch support and a preferred scale skips the '

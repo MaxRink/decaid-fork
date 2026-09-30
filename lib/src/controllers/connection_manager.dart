@@ -386,8 +386,7 @@ class ConnectionManager {
         );
         return true;
       }
-      markExpectingDisconnect(scale.deviceId);
-      await scale.disconnect();
+      await _disconnectPrimaryScale(scale);
       attempt.linkRetired = true;
       scaleController.retireConnectedScale(scale);
       return true;
@@ -2668,15 +2667,19 @@ class ConnectionManager {
     _cancelScaleReacquisition();
     try {
       final scale = scaleController.connectedScale();
-      markExpectingDisconnect(scale.deviceId);
-      if (_shuttingDown &&
-          settingsController.scalePowerMode == ScalePowerMode.disabled &&
-          scale is TransportHandoffScale) {
-        await (scale as TransportHandoffScale).disconnectForHandoff();
-      } else {
-        await scale.disconnect();
-      }
+      await _disconnectPrimaryScale(scale);
     } catch (_) {}
+  }
+
+  Future<void> _disconnectPrimaryScale(Scale scale) async {
+    markExpectingDisconnect(scale.deviceId);
+    if (_shuttingDown &&
+        settingsController.scalePowerMode == ScalePowerMode.disabled &&
+        scale is TransportHandoffScale) {
+      await (scale as TransportHandoffScale).disconnectForHandoff();
+    } else {
+      await scale.disconnect();
+    }
   }
 
   Future<void> shutdown() {

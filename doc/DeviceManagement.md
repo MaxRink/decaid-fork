@@ -1073,6 +1073,8 @@ opens `LauncherScanPage`, which reuses this scan-first flow.
 With `disabled` (keep scale on), machine sleep sends no scale power command.
 On graceful app exit, Decaid releases the transport without sending power-off
 when the driver supports `TransportHandoffScale`, including Decent BLE scales.
+This also applies when a primary-scale connection finishes during shutdown or
+an invalidated connection attempt still needs retirement cleanup.
 Drivers without that capability use their normal disconnect operation.
 Explicit user-requested disconnects and auxiliary-scale cleanup are unchanged.
 
