@@ -90,8 +90,12 @@ skin rather than assuming capture is available.
 native confirmation for each capture, including when live-camera access was
 previously allowed. The Android chooser callback does not identify its
 requesting frame, so a remembered origin grant alone is insufficient here.
-Ordinary file selection continues through the system chooser. Only explicitly
-selected files are shared; no new broad gallery/storage permissions are needed.
+Ordinary file selection uses the system file picker rather than the WebView
+plugin's chooser, so Decaid does not add native camera or video capture
+shortcuts. A system document provider may offer to create new content; choosing
+it is an explicit file transfer, not a live-camera grant to the skin. Only
+explicitly selected files are shared; no new broad gallery/storage permissions
+are needed.
 This change does not add camera support to iOS or desktop WebViews.
 
 ### Skin Origins and Browser Storage

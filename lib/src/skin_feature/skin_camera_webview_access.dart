@@ -1,5 +1,7 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:reaprime/src/skin_feature/skin_camera_controls.dart';
 import 'package:reaprime/src/skin_feature/skin_camera_permission.dart';
@@ -7,6 +9,9 @@ import 'package:reaprime/src/skin_feature/skin_camera_permission.dart';
 class SkinCameraWebViewAccess with WidgetsBindingObserver {
   late final SkinCameraPermission _permission;
   bool _disposed = false;
+  bool _choosingFile = false;
+  int _fileChooserGeneration = 0;
+  final _log = Logger('SkinCameraWebViewAccess');
 
   SkinCameraWebViewAccess({
     required BuildContext? Function() context,
@@ -40,7 +45,10 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
         state != AppLifecycleState.detached;
   }
 
-  void invalidate() => _permission.invalidate();
+  void invalidate() {
+    _fileChooserGeneration++;
+    _permission.invalidate();
+  }
 
   void dispose() {
     _disposed = true;
@@ -53,7 +61,7 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      invalidate();
+      _permission.invalidate();
     }
   }
 
@@ -71,16 +79,51 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
     InAppWebViewController controller,
     ShowFileChooserRequest request,
   ) async {
-    if (!request.isCaptureEnabled) return null;
-    final imageOnly =
-        request.acceptTypes.isNotEmpty &&
-        request.acceptTypes.every(
-          (type) => type.toLowerCase().startsWith('image/'),
-        );
-    if (imageOnly &&
-        await _permission.capture(readTopLevel: controller.getUrl)) {
-      return null;
+    final denied = ShowFileChooserResponse(handledByClient: true);
+    if (_disposed || _choosingFile) return denied;
+    _choosingFile = true;
+    final generation = _fileChooserGeneration;
+    try {
+      final types = request.acceptTypes
+          .map((type) => type.toLowerCase())
+          .toList();
+      final imageOnly =
+          types.isNotEmpty && types.every((type) => type.startsWith('image/'));
+      if (request.isCaptureEnabled) {
+        return imageOnly &&
+                await _permission.capture(readTopLevel: controller.getUrl)
+            ? null
+            : denied;
+      }
+      final fileType = imageOnly
+          ? FileType.image
+          : types.isNotEmpty && types.every((type) => type.startsWith('video/'))
+          ? FileType.video
+          : types.isNotEmpty && types.every((type) => type.startsWith('audio/'))
+          ? FileType.audio
+          : types.isNotEmpty && types.every((type) => type.startsWith('.'))
+          ? FileType.custom
+          : FileType.any;
+      final selection = await FilePicker.pickFiles(
+        type: fileType,
+        allowedExtensions: fileType == FileType.custom
+            ? types.map((type) => type.substring(1)).toList()
+            : null,
+        allowMultiple: request.mode == ShowFileChooserRequestMode.OPEN_MULTIPLE,
+      );
+      if (_disposed || generation != _fileChooserGeneration) return denied;
+      return ShowFileChooserResponse(
+        handledByClient: true,
+        filePaths: selection?.paths
+            .whereType<String>()
+            .map((path) => Uri.file(path).toString())
+            .toList(),
+      );
+    } catch (error, stackTrace) {
+      _log.warning('Skin file selection failed', error, stackTrace);
+      return denied;
+    } finally {
+      _choosingFile = false;
     }
-    return ShowFileChooserResponse(handledByClient: true);
   }
 }
