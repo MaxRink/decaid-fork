@@ -58,6 +58,9 @@ class _SpyConnectionManager extends ConnectionManager {
 }
 
 class _ControllerBleTransport extends BLETransport {
+  _ControllerBleTransport({this.respondToVoltage = false});
+
+  final bool respondToVoltage;
   final BehaviorSubject<ConnectionState> _state = BehaviorSubject.seeded(
     ConnectionState.disconnected,
   );
@@ -132,6 +135,13 @@ class _ControllerBleTransport extends BLETransport {
   }) async {
     final frame = Uint8List.fromList(data);
     writes.add(frame);
+    if (frame.length == 7 && frame[1] == 0x22 && respondToVoltage) {
+      scheduleMicrotask(
+        () => callback?.call(
+          Uint8List.fromList([0x03, 0x22, 0x01, 0x89, 0x00, 0x00, 0xA9]),
+        ),
+      );
+    }
     if (frame.length == 7 && frame[1] == 0x0A && frame[2] == 0x01) {
       scheduleMicrotask(
         () => callback?.call(
@@ -359,6 +369,29 @@ void main() {
       await transport.dispose();
     },
   );
+
+  for (final mode in [ScalePowerMode.disabled, ScalePowerMode.disconnect]) {
+    test('shutdown respects ${mode.name} at the Decent BLE boundary', () async {
+      final transport = _ControllerBleTransport(respondToVoltage: true);
+      final scale = DecentScale(transport: transport);
+      addTearDown(transport.dispose);
+      await scaleController.connectToScale(scale);
+      await settingsController.setScalePowerMode(mode);
+      expect(scale.debugProfile.capabilities.supportsPowerOff, isTrue);
+      transport.writes.clear();
+
+      await connectionManager.shutdown();
+
+      expect(transport.disconnectCalls, 1);
+      expect(transport.nativeState, ConnectionState.disconnected);
+      expect(
+        transport.writes.any(
+          (frame) => frame.length == 7 && frame[1] == 0x0A && frame[2] == 0x02,
+        ),
+        mode == ScalePowerMode.disconnect,
+      );
+    });
+  }
 
   test('wake with watch support and a preferred scale skips the '
       'scale-only burst scan', () async {
