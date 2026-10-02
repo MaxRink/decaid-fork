@@ -75,9 +75,10 @@ Microphone and combined camera/microphone requests are denied.
 
 Consent is remembered by skin ID. In the native skin selector, select the skin
 and set **Camera access** to **Ask**, **Allow**, or **Deny**. These settings
-control future requests, not tracks already acquired by a page. Exit/reload
-the skin to end an existing stream; skins should stop their media tracks when
-capture is finished. System privacy settings can revoke the app permission.
+control future live-camera requests, not tracks already acquired by a page.
+Exit/reload the skin to end an existing stream; skins should stop their media
+tracks when capture is finished. System privacy settings can revoke the app
+permission.
 
 Only the currently served installed skin's exact `http://localhost:<port>`
 origin is eligible. Remote pages, other ports, live-edit folders, background
@@ -97,7 +98,11 @@ camera entitlement. Microphone access remains disabled.
 On Android,
 `<input type="file" accept="image/*" capture="environment">` requests a
 native confirmation for each capture, including when live-camera access was
-previously allowed. The Android chooser callback does not identify its
+previously allowed or denied. This one-shot confirmation does not change the
+stored live-camera decision. Image extensions such as `.jpg` and mixed image
+MIME/extension specifiers such as `image/jpeg,.jpg` are supported; unknown
+extensions and image/non-image mixtures are denied for capture.
+The Android chooser callback does not identify its
 requesting frame, so a remembered origin grant alone is insufficient here.
 Ordinary file selection uses the system file picker rather than the WebView
 plugin's chooser, so Decaid does not add native camera or video capture

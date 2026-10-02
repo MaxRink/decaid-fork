@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
+import 'package:mime/mime.dart';
 import 'package:reaprime/src/skin_feature/skin_camera_controls.dart';
 import 'package:reaprime/src/skin_feature/skin_camera_permission.dart';
 import 'package:reaprime/src/skin_feature/skin_camera_platform.dart';
@@ -83,24 +84,29 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
     final generation = _fileChooserGeneration;
     try {
       final types = request.acceptTypes
-          .map((type) => type.toLowerCase())
+          .map((type) => type.trim().toLowerCase())
           .toList();
       final imageOnly =
-          types.isNotEmpty && types.every((type) => type.startsWith('image/'));
+          types.isNotEmpty &&
+          types.every((type) {
+            final mimeType = type.startsWith('.') ? lookupMimeType(type) : type;
+            return mimeType?.startsWith('image/') ?? false;
+          });
       if (request.isCaptureEnabled) {
         return imageOnly &&
                 await _permission.capture(readTopLevel: controller.getUrl)
             ? null
             : denied;
       }
-      final fileType = imageOnly
+      final fileType =
+          types.isNotEmpty && types.every((type) => type.startsWith('.'))
+          ? FileType.custom
+          : imageOnly
           ? FileType.image
           : types.isNotEmpty && types.every((type) => type.startsWith('video/'))
           ? FileType.video
           : types.isNotEmpty && types.every((type) => type.startsWith('audio/'))
           ? FileType.audio
-          : types.isNotEmpty && types.every((type) => type.startsWith('.'))
-          ? FileType.custom
           : FileType.any;
       final selection = await FilePicker.pickFiles(
         type: fileType,

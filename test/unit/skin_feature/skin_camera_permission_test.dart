@@ -235,4 +235,70 @@ void main() {
       expect(osRequests, 1);
     },
   );
+
+  test(
+    'explicit capture is independent of stored live-camera denial',
+    () async {
+      await store.write(first.id, false);
+      expect(await gate.capture(readTopLevel: () async => topLevel), isTrue);
+      expect(prompts, 1);
+      expect(osRequests, 1);
+      expect(await store.read(first.id), isFalse);
+      expect((await request()).action, PermissionResponseAction.DENY);
+      expect(prompts, 1);
+      expect(osRequests, 1);
+    },
+  );
+
+  test(
+    'live-camera denial during capture does not revoke its confirmation',
+    () async {
+      await store.write(first.id, true);
+      pendingOs = () async {
+        await store.write(first.id, false);
+        return true;
+      };
+      expect(await gate.capture(readTopLevel: () async => topLevel), isTrue);
+      expect(prompts, 1);
+      expect(osRequests, 1);
+      expect(await store.read(first.id), isFalse);
+    },
+  );
+
+  test(
+    'capture after live-camera denial still requires system permission',
+    () async {
+      await store.write(first.id, false);
+      osAllowed = false;
+      expect(await gate.capture(readTopLevel: () async => topLevel), isFalse);
+      expect(prompts, 1);
+      expect(osRequests, 1);
+      expect(await store.read(first.id), isFalse);
+    },
+  );
+
+  test('navigation cancels capture after a live-camera denial', () async {
+    await store.write(first.id, false);
+    pendingOs = () async {
+      gate.invalidate();
+      return true;
+    };
+    expect(await gate.capture(readTopLevel: () async => topLevel), isFalse);
+    expect(prompts, 1);
+    expect(osRequests, 1);
+  });
+
+  for (final denied in [false, null]) {
+    test(
+      'capture decision $denied preserves stored live-camera denial',
+      () async {
+        await store.write(first.id, false);
+        decision = denied;
+        expect(await gate.capture(readTopLevel: () async => topLevel), isFalse);
+        expect(prompts, 1);
+        expect(osRequests, 0);
+        expect(await store.read(first.id), isFalse);
+      },
+    );
+  }
 }

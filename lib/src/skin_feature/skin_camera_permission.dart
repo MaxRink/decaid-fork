@@ -117,7 +117,9 @@ class SkinCameraPermission {
 
       if (!await stillTrusted()) return false;
       final known = await store.read(target.id);
-      if (!await stillTrusted() || known == false) return false;
+      if (!await stillTrusted() || (!confirmEveryRequest && known == false)) {
+        return false;
+      }
       if (known == null || confirmEveryRequest) {
         final answer = await prompt(target.name);
         if (!await stillTrusted() || answer == null) return false;
@@ -127,8 +129,7 @@ class SkinCameraPermission {
       if (!await stillTrusted()) return false;
       if (!await requestSystemCamera()) return false;
       final latest = await store.read(target.id);
-      return await stillTrusted() &&
-          (confirmEveryRequest ? latest != false : latest == true);
+      return await stillTrusted() && (confirmEveryRequest || latest == true);
     } catch (error, stackTrace) {
       _log.warning('Camera access denied', error, stackTrace);
       return false;

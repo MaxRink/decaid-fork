@@ -430,6 +430,130 @@ void main() {
     },
   );
 
+  for (final (types, liveConsent) in [
+    (['image/jpeg'], false),
+    (['.jpg'], true),
+    (['image/jpeg', '.jpg'], true),
+    ([' .JPG ', 'IMAGE/PNG'], true),
+  ]) {
+    testWidgets(
+      'image capture accepts $types with live-camera consent $liveConsent',
+      (tester) async {
+        late BuildContext context;
+        var osRequests = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (value) {
+                context = value;
+                return const Scaffold();
+              },
+            ),
+          ),
+        );
+        await store.write(target.id, liveConsent);
+        final access = SkinCameraWebViewAccess(
+          context: () => context,
+          currentTarget: () => target,
+          requestSystemCamera: () async {
+            osRequests++;
+            return true;
+          },
+        );
+        addTearDown(access.dispose);
+        final result = access.onShowFileChooser(
+          controller,
+          ShowFileChooserRequest(
+            acceptTypes: types,
+            isCaptureEnabled: true,
+            mode: ShowFileChooserRequestMode.OPEN,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(osRequests, 0);
+        await tester.tap(find.text('Allow'));
+        await tester.pumpAndSettle();
+        expect(await result, isNull);
+        expect(osRequests, 1);
+        expect(await store.read(target.id), liveConsent);
+      },
+    );
+  }
+
+  for (final types in [
+    ['.mp4'],
+    ['.unknown-image-extension'],
+    ['image/jpeg', '.txt'],
+    ['.jpg', '.mp4'],
+    <String>[],
+  ]) {
+    testWidgets(
+      'capture denies non-image specifiers $types without prompting',
+      (tester) async {
+        var contextReads = 0;
+        final access = SkinCameraWebViewAccess(
+          context: () {
+            contextReads++;
+            return null;
+          },
+          currentTarget: () => target,
+          requestSystemCamera: () async =>
+              throw StateError('Unexpected camera'),
+        );
+        addTearDown(access.dispose);
+        final result = await access.onShowFileChooser(
+          controller,
+          ShowFileChooserRequest(
+            acceptTypes: types,
+            isCaptureEnabled: true,
+            mode: ShowFileChooserRequestMode.OPEN,
+          ),
+        );
+        expect(result?.handledByClient, isTrue);
+        expect(result?.filePaths, isNull);
+        expect(contextReads, 0);
+        expect(find.byType(AlertDialog), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('ordinary image extension selection keeps its exact filter', (
+    tester,
+  ) async {
+    const channel = MethodChannel('miguelruivo.flutter.plugins.filepicker');
+    MethodCall? selection;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      selection = call;
+      return null;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    final access = SkinCameraWebViewAccess(
+      context: () => null,
+      currentTarget: () => target,
+      requestSystemCamera: () async => throw StateError('Unexpected camera'),
+    );
+    addTearDown(access.dispose);
+    final response = await access.onShowFileChooser(
+      controller,
+      ShowFileChooserRequest(
+        acceptTypes: ['.jpg'],
+        isCaptureEnabled: false,
+        mode: ShowFileChooserRequestMode.OPEN,
+      ),
+    );
+    expect(response?.handledByClient, isTrue);
+    expect(selection?.method, 'custom');
+    expect(selection?.arguments['allowedExtensions'], ['jpg']);
+  });
+
   testWidgets('native setting can revoke and reset per skin', (tester) async {
     await store.write(target.id, true);
     await store.write('other', true);
