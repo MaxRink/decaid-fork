@@ -43,7 +43,7 @@ void main() {
         prompts++;
         return pendingPrompt == null ? decision : await pendingPrompt!();
       },
-      requestAndroidCamera: () async {
+      requestSystemCamera: () async {
         osRequests++;
         return pendingOs == null ? osAllowed : await pendingOs!();
       },
@@ -61,7 +61,7 @@ void main() {
     readTopLevel: () async => topLevel,
   );
 
-  test('camera needs skin consent and Android permission', () async {
+  test('camera needs skin consent and system permission', () async {
     final response = await request();
     expect(response.action, PermissionResponseAction.GRANT);
     expect(response.resources, [PermissionResourceType.CAMERA]);
@@ -70,7 +70,7 @@ void main() {
     expect(await store.read(first.id), isTrue);
   });
 
-  test('remembered consent still checks Android permission', () async {
+  test('remembered consent still checks system permission', () async {
     await store.write(first.id, true);
     expect((await request()).action, PermissionResponseAction.GRANT);
     expect(prompts, 0);
@@ -87,7 +87,7 @@ void main() {
   });
 
   for (final denied in [false, null]) {
-    test('decision $denied denies without requesting Android access', () async {
+    test('decision $denied denies without requesting system access', () async {
       decision = denied;
       expect((await request()).action, PermissionResponseAction.DENY);
       expect(osRequests, 0);
@@ -102,7 +102,7 @@ void main() {
     expect(osRequests, 0);
   });
 
-  test('Android denial never grants the WebView', () async {
+  test('system denial never grants the WebView', () async {
     osAllowed = false;
     expect((await request()).action, PermissionResponseAction.DENY);
   });
@@ -131,6 +131,7 @@ void main() {
     <PermissionResourceType>[],
     [PermissionResourceType.MICROPHONE],
     [PermissionResourceType.CAMERA, PermissionResourceType.MICROPHONE],
+    [PermissionResourceType.CAMERA_AND_MICROPHONE],
   ]) {
     test('denies unsupported resources $resources', () async {
       expect(
@@ -170,7 +171,7 @@ void main() {
   });
 
   test(
-    'skin switch during Android prompt denies the original request',
+    'skin switch during system prompt denies the original request',
     () async {
       final answer = Completer<bool>();
       final opened = Completer<void>();
@@ -186,7 +187,7 @@ void main() {
     },
   );
 
-  test('revocation during Android prompt wins over a pending grant', () async {
+  test('revocation during system prompt wins over a pending grant', () async {
     final answer = Completer<bool>();
     final opened = Completer<void>();
     pendingOs = () {

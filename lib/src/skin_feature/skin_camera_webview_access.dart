@@ -2,9 +2,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
-import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:reaprime/src/skin_feature/skin_camera_controls.dart';
 import 'package:reaprime/src/skin_feature/skin_camera_permission.dart';
+import 'package:reaprime/src/skin_feature/skin_camera_platform.dart';
 
 class SkinCameraWebViewAccess with WidgetsBindingObserver {
   late final SkinCameraPermission _permission;
@@ -17,7 +17,7 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
     required BuildContext? Function() context,
     required SkinCameraTarget? Function() currentTarget,
     SkinCameraConsentStore store = const SkinCameraConsentStore(),
-    Future<bool> Function()? requestAndroidCamera,
+    Future<bool> Function()? requestSystemCamera,
   }) {
     _permission = SkinCameraPermission(
       store: store,
@@ -28,9 +28,7 @@ class SkinCameraWebViewAccess with WidgetsBindingObserver {
         if (current == null || !current.mounted) return null;
         return promptForSkinCamera(current, name);
       },
-      requestAndroidCamera:
-          requestAndroidCamera ??
-          () async => (await permissions.Permission.camera.request()).isGranted,
+      requestSystemCamera: requestSystemCamera ?? requestSkinCameraPermission,
     );
     WidgetsBinding.instance.addObserver(this);
   }

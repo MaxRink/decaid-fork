@@ -49,7 +49,7 @@ class SkinCameraPermission {
   final SkinCameraTarget? Function() currentTarget;
   final bool Function() isActive;
   final Future<bool?> Function(String skinName) prompt;
-  final Future<bool> Function() requestAndroidCamera;
+  final Future<bool> Function() requestSystemCamera;
   final _log = Logger('SkinCameraPermission');
   bool _pending = false;
   int _generation = 0;
@@ -59,7 +59,7 @@ class SkinCameraPermission {
     required this.currentTarget,
     required this.isActive,
     required this.prompt,
-    required this.requestAndroidCamera,
+    required this.requestSystemCamera,
   });
 
   void invalidate() => _generation++;
@@ -125,7 +125,7 @@ class SkinCameraPermission {
         if (!answer) return false;
       }
       if (!await stillTrusted()) return false;
-      if (!await requestAndroidCamera()) return false;
+      if (!await requestSystemCamera()) return false;
       final latest = await store.read(target.id);
       return await stillTrusted() &&
           (confirmEveryRequest ? latest != false : latest == true);

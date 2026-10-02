@@ -64,11 +64,12 @@ backgrounded. After ten minutes in the background, it unloads the page and
 reloads the selected skin when the app returns. Skin state that must survive
 this reload should be persisted through the Decaid API or browser storage.
 
-### Camera Access on Android
+### Live Camera Access on Android, iOS and macOS
 
-An installed skin in the embedded Android WebView can request a live camera
-with `navigator.mediaDevices.getUserMedia({video: true, audio: false})`.
-Decaid asks for consent for that skin, then requests Android camera permission
+An installed skin in the embedded Android, iOS or macOS WebView can request a
+live camera with
+`navigator.mediaDevices.getUserMedia({video: true, audio: false})`.
+Decaid asks for consent for that skin, then requests system camera permission
 only when needed. No camera permission is requested during onboarding.
 Microphone and combined camera/microphone requests are denied.
 
@@ -76,16 +77,24 @@ Consent is remembered by skin ID. In the native skin selector, select the skin
 and set **Camera access** to **Ask**, **Allow**, or **Deny**. These settings
 control future requests, not tracks already acquired by a page. Exit/reload
 the skin to end an existing stream; skins should stop their media tracks when
-capture is finished. Android system settings can revoke the app permission.
+capture is finished. System privacy settings can revoke the app permission.
 
 Only the currently served installed skin's exact `http://localhost:<port>`
 origin is eligible. Remote pages, other ports, live-edit folders, background
 requests and requests invalidated by navigation are denied. Localhost is a
 potentially trustworthy origin for camera APIs; an HTTP LAN address is not.
-Availability still depends on the tablet's camera, Android permission and
+Availability still depends on the device's camera, system permission and
 WebView implementation. Handle permission denial and missing cameras in the
 skin rather than assuming capture is available.
 
+Apple live-camera support uses WKWebView's media permission callback, available
+on iOS 15+ and macOS 12+. Decaid's current minimum versions meet those requirements.
+macOS uses a camera-only AVFoundation permission request and the app sandbox's
+camera entitlement. Microphone access remains disabled.
+
+### Native File-Input Capture
+
+On Android,
 `<input type="file" accept="image/*" capture="environment">` requests a
 native confirmation for each capture, including when live-camera access was
 previously allowed. The Android chooser callback does not identify its
@@ -96,7 +105,16 @@ shortcuts. A system document provider may offer to create new content; choosing
 it is an explicit file transfer, not a live-camera grant to the skin. Only
 explicitly selected files are shared; no new broad gallery/storage permissions
 are needed.
-This change does not add camera support to iOS or desktop WebViews.
+
+On iOS and macOS, Decaid leaves the system file picker unchanged. The pinned
+WebView plugin does not expose Apple's file-input chooser to the Android
+confirmation handler. Per-skin Ask/Allow/Deny governs live-camera requests on
+Apple platforms; it does not govern user-selected files or any camera option
+offered by the iOS system picker. Android's per-capture confirmation and chooser
+restrictions do not apply to Apple file inputs. A skin can capture a still image
+from an approved live stream instead.
+
+Windows and Linux camera support remain unchanged.
 
 ### Skin Origins and Browser Storage
 

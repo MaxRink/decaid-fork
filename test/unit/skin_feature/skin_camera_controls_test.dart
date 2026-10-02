@@ -117,7 +117,7 @@ void main() {
     final access = SkinCameraWebViewAccess(
       context: () => null,
       currentTarget: () => target,
-      requestAndroidCamera: () async => throw StateError('Unexpected camera'),
+      requestSystemCamera: () async => throw StateError('Unexpected camera'),
     );
     addTearDown(access.dispose);
     final response = await access.onShowFileChooser(
@@ -185,7 +185,7 @@ void main() {
     });
   }
 
-  testWidgets('native consent precedes Android permission', (tester) async {
+  testWidgets('native consent precedes system permission', (tester) async {
     late BuildContext context;
     var osRequests = 0;
     await tester.pumpWidget(
@@ -201,7 +201,7 @@ void main() {
     final access = SkinCameraWebViewAccess(
       context: () => context,
       currentTarget: () => target,
-      requestAndroidCamera: () async {
+      requestSystemCamera: () async {
         osRequests++;
         return true;
       },
@@ -316,7 +316,7 @@ void main() {
   });
 
   for (final cancel in ['background', 'dispose', 'cancel']) {
-    testWidgets('$cancel invalidates a pending Android grant', (tester) async {
+    testWidgets('$cancel invalidates a pending system grant', (tester) async {
       late BuildContext context;
       await tester.pumpWidget(
         MaterialApp(
@@ -333,7 +333,7 @@ void main() {
       final access = SkinCameraWebViewAccess(
         context: () => context,
         currentTarget: () => target,
-        requestAndroidCamera: () => osResult.future,
+        requestSystemCamera: () => osResult.future,
       );
       final result = access.onPermissionRequest(controller, request);
       await tester.pumpAndSettle();
@@ -371,7 +371,7 @@ void main() {
       final access = SkinCameraWebViewAccess(
         context: () => context,
         currentTarget: () => target,
-        requestAndroidCamera: () async {
+        requestSystemCamera: () async {
           osRequests++;
           return true;
         },
