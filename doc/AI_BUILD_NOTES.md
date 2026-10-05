@@ -143,6 +143,16 @@ installed permission handler does not provide a macOS backend. Keep
 `NSCameraUsageDescription` and the camera entitlement in both Debug/Profile
 and Release builds. Neither path requests microphone access.
 
+Keep `NSMicrophoneUsageDescription` in both app plists for native file-input
+recording. PR #939's iPhone crash report confirms that the iOS system video
+picker configures an audio input and TCC kills the process without this key,
+before the Dart permission callback runs. The description lets iOS ask for
+permission; it does not grant access. Native iOS video can include audio after
+OS consent. Keep live WebView microphone requests denied and do not add the
+macOS audio-input entitlement. The pinned macOS file picker uses NSOpenPanel.
+Run `pwsh -NoProfile -File scripts/check_apple_camera_privacy.ps1` to check these
+privacy declarations and the macOS entitlement boundary.
+
 The pinned WebView plugin exposes WKWebView media permission callbacks on iOS
 15+ and macOS 12+, but not an Apple file-input chooser callback. Do not treat
 live-camera consent as a native file-input capture guard. Another tester must

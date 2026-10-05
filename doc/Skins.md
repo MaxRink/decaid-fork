@@ -91,7 +91,7 @@ skin rather than assuming capture is available.
 Apple live-camera support uses WKWebView's media permission callback, available
 on iOS 15+ and macOS 12+. Decaid's current minimum versions meet those requirements.
 macOS uses a camera-only AVFoundation permission request and the app sandbox's
-camera entitlement. Microphone access remains disabled.
+camera entitlement. Live microphone access remains denied.
 
 ### Native File-Input Capture
 
@@ -116,8 +116,24 @@ WebView plugin does not expose Apple's file-input chooser to the Android
 confirmation handler. Per-skin Ask/Allow/Deny governs live-camera requests on
 Apple platforms; it does not govern user-selected files or any camera option
 offered by the iOS system picker. Android's per-capture confirmation and chooser
-restrictions do not apply to Apple file inputs. A skin can capture a still image
-from an approved live stream instead.
+restrictions do not apply to Apple file inputs.
+
+The iOS system picker can record video with audio, including for
+`<input type="file" accept="video/*" capture="environment">`. Apple configures
+a microphone input for this recorder, so the app declares
+`NSMicrophoneUsageDescription`. Without that description, iOS terminates the
+app with a TCC privacy violation before Dart can handle the request. iOS can ask
+for microphone permission when the user chooses native recording; granting it
+allows audio in that recording. This permission does not enable live microphone
+requests from skins or change the stored live-camera decision. Skins must handle
+denial and cancellation. Camera-only live video remains available through
+`getUserMedia({video: true, audio: false})`.
+
+The macOS plist also declares the microphone usage description, but Decaid does
+not add the macOS audio-input entitlement or request microphone access. The
+pinned macOS plugin uses a file-selection panel, not the iOS camera recorder.
+A skin can capture a still image or record camera-only video from an approved
+live stream instead.
 
 Windows and Linux camera support remain unchanged.
 

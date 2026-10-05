@@ -79,7 +79,10 @@ for pasting into the PR. A screenshot of the log plus the preview is the evidenc
 | `accept="image/*"` multiple | Import from library | Multiple files returned |
 | `capture="environment"` / `"user"` with `accept="image/*"` | One-shot capture | Android: fresh Decaid confirmation, then camera, then the capture file. iOS: WKWebView's own picker; the per-capture gate does not apply (documented, not a defect) |
 | `accept="image/jpeg,.jpg"` + capture | One-shot capture | Accepted on Android |
-| `accept="video/*"` + capture | One-shot capture | Android: denied, no confirmation, no picker. iOS: currently crashes the app on `7c59e4b8`; see PR #939 |
+| `accept="video/*"` + capture | One-shot capture | Android: denied, no confirmation, no picker. iOS: native video recorder can ask for camera and microphone permission; recorded video can include audio after OS consent. No TCC privacy kill |
+| Deny microphone permission or cancel native video capture | One-shot capture | No process termination; record whether WebKit reports cancellation, denial or a selected file. No change to stored live-camera consent |
+| OS microphone permission granted for native recording, then `audio: true` / `video+audio` | Live camera (red) | Still `DENIED (expected)`; native recording consent does not grant a live microphone stream |
+| `accept="video/*"` without capture, or an unrestricted file input | Native file picker | On iOS, exercise any camera recording option as well as importing an existing file; recording, denial and cancellation must not terminate the app |
 | Per-skin isolation (skin B above) | Both skins | Consent set on skin A does not leak to skin B; each id keeps its own `skinCameraConsent.*` entry |
 
 Not covered here: a genuinely untrusted non-localhost origin, macOS sandboxed
