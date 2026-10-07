@@ -334,7 +334,7 @@ jobs:
           pub-cache: true
 
       - name: Install dependencies
-        run: flutter pub get --enforce-lockfile
+        run: flutter pub get
 
       - name: Install macOS build tools
         if: matrix.platform == 'macos'

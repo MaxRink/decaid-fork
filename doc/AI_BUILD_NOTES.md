@@ -158,6 +158,10 @@ change. These jobs reuse release Flutter 3.44.2, Xcode 26.3 and pinned asset
 fetchers, with no signing or publishing credentials. Unsigned compilation
 (`CODE_SIGNING_ALLOWED=NO`) skips the Xcode Crashlytics symbol-upload phase;
 the release workflow's explicit iOS dSYM upload remains unchanged.
+Use the release workflow's `flutter pub get` rather than `--enforce-lockfile`:
+Flutter 3.44.2 pins `intl`, `matcher`, `meta`, `test_api` and `vector_math` to
+different versions than the current lockfile. This resolution is confined to
+CI; do not commit SDK-only lockfile churn in the camera PR.
 
 The pinned WebView plugin exposes WKWebView media permission callbacks on iOS
 15+ and macOS 12+, but not an Apple file-input chooser callback. Do not treat

@@ -62,3 +62,8 @@ error events and empty stderr (`--concurrency=4`, exclusive lab lock, fixed
 test ports free). Expected malformed-URI server logs were inspected. The
 archive-path assertion was not modified for this run. The stored-setting label
 fits 320/800 px widget surfaces at normal/doubled text size.
+
+The first native CI attempt stopped before compilation because the release
+Flutter SDK's five core package pins differ from the current lockfile. The
+jobs now use the release workflow's normal `flutter pub get`, leaving the
+committed lockfile and camera-plugin versions unchanged.
