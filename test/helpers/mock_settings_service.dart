@@ -125,6 +125,7 @@ class MockSettingsService extends SettingsService {
   @override
   Future<void> setPreferredGrinderDeviceId(String? deviceId) async =>
       _preferredGrinderDeviceId = deviceId;
+  @override
   Future<Map<String, bool>> skalePoweredByUsbByDevice() async =>
       Map.unmodifiable(_skalePoweredByUsbByDevice);
   @override

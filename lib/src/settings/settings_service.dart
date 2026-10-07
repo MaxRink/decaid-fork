@@ -272,6 +272,7 @@ class SharedPreferencesSettingsService extends SettingsService {
     }
   }
 
+  @override
   Future<Map<String, bool>> skalePoweredByUsbByDevice() async {
     final ids =
         await prefs.getStringList(
