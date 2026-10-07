@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [ "${CODE_SIGNING_ALLOWED:-}" = "NO" ]; then
+  echo "Skipping Crashlytics symbol upload for unsigned compilation."
+  exit 0
+fi
+
 PATH="${PATH}:$FLUTTER_ROOT/bin:${PUB_CACHE}/bin:$HOME/.pub-cache/bin"
 
 PATH_TO_CRASHLYTICS_UPLOAD_SCRIPT=""

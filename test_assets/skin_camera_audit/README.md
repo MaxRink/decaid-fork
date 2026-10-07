@@ -52,7 +52,7 @@ zip -r -X /tmp/camera-audit-test-b.zip skin_camera_audit_b >/dev/null
 
 ## Consent control
 
-Skins page -> select the skin -> **Camera access** = Ask / Allow / Deny.
+Skins page -> select the skin -> **Live camera access** = Ask / Allow / Deny.
 This is `SkinCameraConsentSetting` (`lib/src/skin_feature/skin_camera_controls.dart`)
 over the `skinCameraConsent.<skinId>` SharedPreferences key.
 

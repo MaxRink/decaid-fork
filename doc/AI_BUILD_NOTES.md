@@ -143,22 +143,28 @@ installed permission handler does not provide a macOS backend. Keep
 `NSCameraUsageDescription` and the camera entitlement in both Debug/Profile
 and Release builds. Neither path requests microphone access.
 
-Keep `NSMicrophoneUsageDescription` in both app plists for native file-input
+Keep `NSMicrophoneUsageDescription` in the iOS app plist for native file-input
 recording. PR #939's iPhone crash report confirms that the iOS system video
 picker configures an audio input and TCC kills the process without this key,
 before the Dart permission callback runs. The description lets iOS ask for
 permission; it does not grant access. Native iOS video can include audio after
 OS consent. Keep live WebView microphone requests denied and do not add the
-macOS audio-input entitlement. The pinned macOS file picker uses NSOpenPanel.
-Run `pwsh -NoProfile -File scripts/check_apple_camera_privacy.ps1` to check these
-privacy declarations and the macOS entitlement boundary.
+macOS microphone description or audio-input entitlement. The pinned macOS file
+picker uses NSOpenPanel and does not record video.
+Run `python3 tool/ci/check_apple_camera_privacy_test.py` to check these privacy
+declarations and the macOS entitlement boundary. PR CI runs this check and
+unsigned iOS/macOS release compilation when Apple, camera or build-check inputs
+change. These jobs reuse release Flutter 3.44.2, Xcode 26.3 and pinned asset
+fetchers, with no signing or publishing credentials. Unsigned compilation
+(`CODE_SIGNING_ALLOWED=NO`) skips the Xcode Crashlytics symbol-upload phase;
+the release workflow's explicit iOS dSYM upload remains unchanged.
 
 The pinned WebView plugin exposes WKWebView media permission callbacks on iOS
 15+ and macOS 12+, but not an Apple file-input chooser callback. Do not treat
 live-camera consent as a native file-input capture guard. Another tester must
-verify Apple compilation, system privacy prompts, localhost capture and
-lifecycle behavior on real Apple devices; Windows widget tests do not cover
-those native paths.
+verify system privacy prompts, localhost capture and lifecycle behavior on
+real Apple devices; neither CI compilation nor Windows widget tests cover
+those runtime paths.
 
 ## Footgun #1: Xcode 26.4 / flutter_inappwebview
 

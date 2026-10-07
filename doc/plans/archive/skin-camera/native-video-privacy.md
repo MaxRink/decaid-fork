@@ -10,12 +10,13 @@ establish a macOS crash from the same interaction.
 
 ## Decision
 
-Add microphone usage descriptions to both Apple app plists. A usage description
+Add a microphone usage description to the iOS app plist. A usage description
 does not grant permission. iOS can ask for microphone permission when a user
 chooses native video recording, and the recording can include audio after that
 permission is granted. Keep live WebView microphone and combined requests
 denied. Leave onboarding, permission-handler opt-ins and macOS audio-input
-entitlements unchanged.
+entitlements unchanged. The macOS file picker does not record video, so macOS
+does not need a microphone usage description.
 
 The user approved this tradeoff after considering camera-only native recording.
 The pinned plugin cannot configure Apple's file-input recorder without audio.
@@ -38,3 +39,26 @@ session was given. No Apple build or hardware verification was performed on
 this Windows host. Apple hardware must verify native recording, microphone
 denial and cancellation, and continued live-microphone denial. The manual audit
 checklist includes these cases.
+
+## Review Follow-Up
+
+Review 5440542470 removed the unsupported macOS microphone description and
+replaced the PowerShell-only helper with a standard-library Python plist test
+wired into PR CI. CI also compiles unsigned iOS and macOS release builds using
+the release workflow's toolchain and asset setup. Compilation checks do not
+establish device permission behavior. The Xcode symbol-upload phase skips
+unsigned compilation, without changing the explicit release iOS dSYM upload.
+
+The unrelated user-script extraction was removed; host identity and simulated
+device scripts remain in `skin_view.dart`. The stored setting is labelled
+`Live camera access` because native file pickers are outside that policy.
+
+Windows follow-up verification used Flutter 3.47.5 / Dart 3.13.4 and the exact
+dependency lockfile. The three Python privacy tests pass; both unsigned
+symbol-upload checks pass; actionlint 1.7.12 reports no workflow errors.
+Formatting checked 905 files with zero changes and analysis reported no issues.
+The full unmodified Flutter suite passed 4,658 tests with two skipped, zero
+error events and empty stderr (`--concurrency=4`, exclusive lab lock, fixed
+test ports free). Expected malformed-URI server logs were inspected. The
+archive-path assertion was not modified for this run. The stored-setting label
+fits 320/800 px widget surfaces at normal/doubled text size.

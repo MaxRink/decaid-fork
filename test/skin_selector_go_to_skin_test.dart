@@ -146,7 +146,7 @@ void main() {
       await _pumpPage(tester, _FakeWebUIService());
       await tester.pumpAndSettle();
       expect(
-        find.text('Camera access'),
+        find.text('Live camera access'),
         platform == TargetPlatform.iOS || platform == TargetPlatform.macOS
             ? findsOneWidget
             : findsNothing,

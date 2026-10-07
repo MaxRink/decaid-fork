@@ -73,7 +73,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
-          expect(find.text('Camera access'), findsOneWidget);
+          expect(find.text('Live camera access'), findsOneWidget);
           final output = Platform.environment['DECAID_UI_EVIDENCE'];
           if (output != null) {
             await tester.runAsync(() async {

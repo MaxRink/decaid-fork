@@ -74,7 +74,7 @@ only when needed. No camera permission is requested during onboarding.
 Microphone and combined camera/microphone requests are denied.
 
 Consent is remembered by skin ID. In the native skin selector, select the skin
-and set **Camera access** to **Ask**, **Allow**, or **Deny**. These settings
+and set **Live camera access** to **Ask**, **Allow**, or **Deny**. These settings
 control future live-camera requests, not tracks already acquired by a page.
 Exit/reload the skin to end an existing stream; skins should stop their media
 tracks when capture is finished. System privacy settings can revoke the app
@@ -129,9 +129,9 @@ requests from skins or change the stored live-camera decision. Skins must handle
 denial and cancellation. Camera-only live video remains available through
 `getUserMedia({video: true, audio: false})`.
 
-The macOS plist also declares the microphone usage description, but Decaid does
-not add the macOS audio-input entitlement or request microphone access. The
-pinned macOS plugin uses a file-selection panel, not the iOS camera recorder.
+macOS does not declare microphone usage, add the audio-input entitlement or
+request microphone access. The pinned macOS plugin uses a file-selection
+panel, not the iOS camera recorder.
 A skin can capture a still image or record camera-only video from an approved
 live stream instead.
 

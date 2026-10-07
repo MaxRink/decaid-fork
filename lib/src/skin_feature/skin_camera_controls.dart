@@ -94,7 +94,7 @@ class _SkinCameraConsentSettingState extends State<SkinCameraConsentSetting> {
           children: [
             const Icon(Icons.camera_alt_outlined, size: 20),
             const SizedBox(width: 8),
-            const Expanded(child: Text('Camera access')),
+            const Expanded(child: Text('Live camera access')),
             DropdownButton<String>(
               value: switch (snapshot.data) {
                 true => 'allow',
