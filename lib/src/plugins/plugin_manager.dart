@@ -2174,11 +2174,16 @@ class PluginManager {
               return Promise.reject(new Error("Device handlers connect, disconnect, and execute are required"));
             }
             const registrationHandle = "device_" + pluginGeneration + "_" + __deviceNonce + "_" + (++__deviceSeq);
+            let retired = false;
+            const sessionCall = (type, payload) => retired
+              ? Promise.reject(Object.assign(new Error('Device session retired'), {code: 'stale_session'}))
+              : __deviceCall(type, payload);
             __deviceSetHandlers(registrationHandle, {
               pluginId: pluginId,
               generation: pluginGeneration,
               bridgeToken: pluginBridgeToken,
               handlers: handlers,
+              dispose: () => { retired = true; },
               connectTransport: (invocationId, payload) => {
                 const transport = __connectTransport(registrationHandle, invocationId);
                 if (driver.type === "sensor") return transport;
@@ -2187,17 +2192,17 @@ class PluginManager {
                   connectionId: session,
                   transport: transport,
                   publish(snapshot) {
-                    return __deviceCall("publish", {
+                    return sessionCall("publish", {
                       registrationHandle: registrationHandle, session: session, snapshot: snapshot
                     });
                   },
                   publishInfo(info) {
-                    return __deviceCall("publishInfo", {
+                    return sessionCall("publishInfo", {
                       registrationHandle: registrationHandle, session: session, info: info
                     });
                   },
                   reportDisconnected() {
-                    return __deviceCall("reportDisconnected", {
+                    return sessionCall("reportDisconnected", {
                       registrationHandle: registrationHandle, session: session
                     });
                   }

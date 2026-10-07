@@ -19,7 +19,7 @@ const __bindBleDriver = (driverId, factory) => {
     const handle = payload.registrationHandle;
     const sessions = new Map();
     const cleanups = new Set();
-    const recoverableSampleErrors = new WeakMap();
+    const recoverablePublicationErrors = new WeakMap();
     const stale = () => Object.assign(new Error('BLE session retired'), {code: 'stale_session'});
     const context = (payload, cleanup) => {
       const authority = payload.gattSession;
@@ -75,14 +75,13 @@ const __bindBleDriver = (driverId, factory) => {
       if (cleanup) return Object.freeze({gatt});
       return Object.freeze({
         gatt,
-        connectionId: payload.session,
         publish: (snapshot, sample) => record.disconnected ? Promise.reject(stale()) : __deviceCall('blePublish', {
           registrationHandle: handle, session: payload.session, snapshot, sample
         }).catch(error => {
           if (sample != null && error && error.code === 'stale_sample' &&
               (typeof error === 'object' || typeof error === 'function') &&
               record.activeCallbackEpoch !== 0) {
-            recoverableSampleErrors.set(error, {
+            recoverablePublicationErrors.set(error, {
               record,
               epoch: record.activeCallbackEpoch
             });
@@ -91,6 +90,13 @@ const __bindBleDriver = (driverId, factory) => {
         }),
         publishInfo: info => record.disconnected ? Promise.reject(stale()) : __deviceCall('blePublishInfo', {
           registrationHandle: handle, session: payload.session, info
+        }).catch(error => {
+          if (error && (typeof error === 'object' || typeof error === 'function') &&
+              record.activeCallbackEpoch !== 0 &&
+              (error.code === 'invalid_argument' || error.code === 'resource_limit')) {
+            recoverablePublicationErrors.set(error, {record, epoch: record.activeCallbackEpoch});
+          }
+          throw error;
         }),
         reportDisconnected: () => record.disconnected ? Promise.reject(stale()) : __deviceCall('bleDisconnected', {
           registrationHandle: handle, session: payload.session
@@ -123,11 +129,11 @@ const __bindBleDriver = (driverId, factory) => {
         } catch (error) {
           const provenance = error &&
             (typeof error === 'object' || typeof error === 'function')
-              ? recoverableSampleErrors.get(error) : null;
+              ? recoverablePublicationErrors.get(error) : null;
           if (!provenance || provenance.record !== record || provenance.epoch !== epoch) {
             throw error;
           }
-          recoverableSampleErrors.delete(error);
+          recoverablePublicationErrors.delete(error);
         } finally {
           if (record.activeCallbackEpoch === epoch) record.activeCallbackEpoch = 0;
         }
