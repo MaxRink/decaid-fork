@@ -137,14 +137,13 @@ jobs:
     timeout-minutes: 5
     outputs:
       python: ${{ steps.paths.outputs.python }}
-      apple: ${{ steps.paths.outputs.apple }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Detect Python tool and Apple build changes
+      - name: Detect Python tool changes
         id: paths
         shell: bash
         env:
@@ -160,19 +159,6 @@ jobs:
               exit "$status"
             fi
             echo "python=true" >> "$GITHUB_OUTPUT"
-          fi
-          if git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
-            ios macos lib/src/skin_feature pubspec.yaml pubspec.lock \
-            tool/ci/check_apple_camera_privacy_test.py \
-            scripts/upload_crashlytics_symbols.sh \
-            .github/workflows/pr-checks.yml; then
-            echo "apple=false" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            if [ "$status" -ne 1 ]; then
-              exit "$status"
-            fi
-            echo "apple=true" >> "$GITHUB_OUTPUT"
           fi
 
   flutter:
@@ -201,11 +187,6 @@ jobs:
 
       - name: Check Apple camera privacy declarations
         run: python3 tool/ci/check_apple_camera_privacy_test.py
-
-      - name: Check unsigned Apple builds skip symbol uploads
-        run: |
-          CODE_SIGNING_ALLOWED=NO scripts/upload_crashlytics_symbols.sh ios
-          CODE_SIGNING_ALLOWED=NO scripts/upload_crashlytics_symbols.sh macos
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -299,65 +280,6 @@ jobs:
           path: build/test-results/flutter-events.json
           if-no-files-found: ignore
           retention-days: 7
-
-  apple-build:
-    name: Apple build (${{ matrix.platform }})
-    needs: changes
-    if: needs.changes.outputs.apple == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [ios, macos]
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      FLUTTER_XCODE_CODE_SIGNING_ALLOWED: 'NO'
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Select release Xcode
-        run: xcodes select 26.3
-
-      - name: Set up release Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.44.2'
-          cache: true
-          pub-cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Install macOS build tools
-        if: matrix.platform == 'macos'
-        run: brew install automake libtool
-
-      - name: Fetch external plugins
-        run: |
-          ./scripts/fetch_dye2_plugin.sh
-          ./scripts/fetch_shot_upload_plugin.sh
-          ./scripts/fetch_dcamp_plugin.sh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check Apple camera privacy declarations
-        run: python3 tool/ci/check_apple_camera_privacy_test.py
-
-      - name: Build iOS archive (unsigned)
-        if: matrix.platform == 'ios'
-        run: ./flutter_with_commit.sh build ipa --release --dart-define=APP_STORE=true --no-codesign
-
-      - name: Build macOS app (unsigned)
-        if: matrix.platform == 'macos'
-        run: ./flutter_with_commit.sh build macos --release
 
   build-smoke:
     name: Linux build smoke

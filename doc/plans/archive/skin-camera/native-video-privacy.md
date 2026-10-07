@@ -44,18 +44,17 @@ checklist includes these cases.
 
 Review 5440542470 removed the unsupported macOS microphone description and
 replaced the PowerShell-only helper with a standard-library Python plist test
-wired into PR CI. CI also compiles unsigned iOS and macOS release builds using
-the release workflow's toolchain and asset setup. Compilation checks do not
-establish device permission behavior. The Xcode symbol-upload phase skips
-unsigned compilation, without changing the explicit release iOS dSYM upload.
+wired into PR CI. Temporary CI jobs compiled unsigned iOS and macOS release
+builds using the release workflow's toolchain and asset setup. Compilation
+checks do not establish device permission behavior.
 
 The unrelated user-script extraction was removed; host identity and simulated
 device scripts remain in `skin_view.dart`. The stored setting is labelled
 `Live camera access` because native file pickers are outside that policy.
 
 Windows follow-up verification used Flutter 3.47.5 / Dart 3.13.4 and the exact
-dependency lockfile. The three Python privacy tests pass; both unsigned
-symbol-upload checks pass; actionlint 1.7.12 reports no workflow errors.
+dependency lockfile. At that revision, the three Python privacy tests and both
+unsigned symbol-upload checks passed; actionlint 1.7.12 found no workflow errors.
 Formatting checked 905 files with zero changes and analysis reported no issues.
 The full unmodified Flutter suite passed 4,658 tests with two skipped, zero
 error events and empty stderr (`--concurrency=4`, exclusive lab lock, fixed
@@ -65,5 +64,27 @@ fits 320/800 px widget surfaces at normal/doubled text size.
 
 The first native CI attempt stopped before compilation because the release
 Flutter SDK's five core package pins differ from the current lockfile. The
-jobs now use the release workflow's normal `flutter pub get`, leaving the
-committed lockfile and camera-plugin versions unchanged.
+verification jobs used the release workflow's normal `flutter pub get`, leaving
+the committed lockfile and camera-plugin versions unchanged.
+
+Both native builds passed on `b5a500978388f09a64aadac9ae76c52256980606`
+with Flutter 3.44.2, Xcode 26.3 and the release asset setup:
+
+- [iOS unsigned release archive](https://github.com/decentespresso/decaid/actions/runs/37610433781/job/112757991859), using the supported Swift Package Manager configuration.
+- [macOS unsigned release app](https://github.com/decentespresso/decaid/actions/runs/37610433781/job/112757991769).
+
+Both jobs also passed the three Python privacy tests. All seven checks in
+[that CI run](https://github.com/decentespresso/decaid/actions/runs/37610433781)
+passed. No Apple simulator or hardware runtime acceptance is claimed.
+
+## CI Scope Follow-Up
+
+At the user's request, removed the temporary Apple build jobs and their change
+detection from normal PR CI. Retained the Python privacy/configuration check
+and the successful native compilation results above as PR-specific evidence.
+Restored the symbol-upload script's pre-verification behavior by removing the
+unsigned-build bypass. This camera fix does not establish a repository-wide
+Apple build policy or change release symbol uploads. The macOS microphone
+description and audio-input entitlement remain absent: the pinned file-input
+delegate only presents NSOpenPanel, and live microphone/combined requests
+remain denied.
