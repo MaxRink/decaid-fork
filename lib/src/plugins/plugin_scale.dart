@@ -63,6 +63,7 @@ class PluginScale extends PluginProtocolDevice
   @override
   Future<void> waitForReadiness() => _firstWeight.future;
 
+  @override
   void publishInfo(Map<String, dynamic> info, {String? session}) {
     checkSession(session);
     final firmwareVersion = info['firmwareVersion'];
