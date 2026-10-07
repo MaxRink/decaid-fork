@@ -29,6 +29,7 @@ class PluginScale extends PluginProtocolDevice
     super.prepareConnection,
     super.onReady,
     super.invocationTimeout,
+    super.deviceSettings,
   }) : capabilities = Set.unmodifiable(capabilities);
 
   @override

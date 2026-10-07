@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:reaprime/src/models/device/grinder_device.dart';
 import 'package:reaprime/src/util/safe_path.dart';
+
 import 'plugin_ble_matcher.dart';
 
 List<String> parsePluginEnumValues(String key, dynamic schema) {
@@ -114,6 +115,7 @@ class PluginDriverDeclaration {
   final Set<PluginGrinderCapability> grinderCapabilities;
   final Map<String, GrinderControlDescriptor> controls;
   final List<PluginDeviceSurface> surfaces;
+  final String? settingsEndpoint;
 
   const PluginDriverDeclaration({
     required this.id,
@@ -123,6 +125,7 @@ class PluginDriverDeclaration {
     this.grinderCapabilities = const {},
     this.controls = const {},
     this.surfaces = const [],
+    this.settingsEndpoint,
   });
 
   factory PluginDriverDeclaration.fromJson(dynamic json) {
@@ -215,6 +218,14 @@ class PluginDriverDeclaration {
         surfaces.where((surface) => surface.role == 'settings').length > 1) {
       throw const FormatException('Invalid plugin device surfaces');
     }
+    final settingsEndpoint = json['settingsEndpoint'];
+    if (settingsEndpoint != null &&
+        (settingsEndpoint is! String ||
+            !RegExp(
+              r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$',
+            ).hasMatch(settingsEndpoint))) {
+      throw const FormatException('Invalid plugin settings endpoint');
+    }
     return PluginDriverDeclaration(
       id: id,
       type: type,
@@ -223,6 +234,7 @@ class PluginDriverDeclaration {
       grinderCapabilities: Set.unmodifiable(grinderCapabilities),
       controls: Map.unmodifiable(controls),
       surfaces: List.unmodifiable(surfaces),
+      settingsEndpoint: settingsEndpoint as String?,
     );
   }
 
@@ -241,6 +253,7 @@ class PluginDriverDeclaration {
       'controls': controls.map((key, value) => MapEntry(key, value.toJson())),
     if (surfaces.isNotEmpty)
       'surfaces': surfaces.map((surface) => surface.toJson()).toList(),
+    if (settingsEndpoint != null) 'settingsEndpoint': settingsEndpoint,
   };
 }
 

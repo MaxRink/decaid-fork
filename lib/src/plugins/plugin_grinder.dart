@@ -45,6 +45,7 @@ class PluginGrinder extends PluginProtocolDevice implements GrinderDevice {
     super.prepareConnection,
     super.onReady,
     super.invocationTimeout,
+    super.deviceSettings,
   }) : _fixedControls = Map.unmodifiable(controls),
        capabilities = Set.unmodifiable(
          capabilities.map(

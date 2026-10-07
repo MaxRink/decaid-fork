@@ -26,6 +26,24 @@ void main() {
     expect(manifest.permissions, {PluginPermissions.networkWebsocket});
   });
 
+  test('preserves a validated device settings endpoint', () {
+    final drivers = parsePluginDrivers([
+      {
+        'id': 'humidity',
+        'type': 'sensor',
+        'settingsEndpoint': 'device-settings',
+      },
+    ]);
+    expect(drivers.single.settingsEndpoint, 'device-settings');
+    expect(drivers.single.toJson()['settingsEndpoint'], 'device-settings');
+    expect(
+      () => parsePluginDrivers([
+        {'id': 'humidity', 'type': 'sensor', 'settingsEndpoint': '../bad'},
+      ]),
+      throwsFormatException,
+    );
+  });
+
   test('rejects invalid or duplicate driver contributions', () {
     Map<String, dynamic> manifestWith(dynamic drivers) => <String, dynamic>{
       'id': 'test.plugin',
