@@ -343,6 +343,9 @@ class SettingsController with ChangeNotifier {
     if (deviceId == _preferredGrinderDeviceId) return;
     _preferredGrinderDeviceId = deviceId;
     await _settingsService.setPreferredGrinderDeviceId(deviceId);
+    notifyListeners();
+  }
+
   Future<void> setSkalePoweredByUsb(String deviceId, bool value) =>
       setSkalePoweredByUsbByDevice({
         ..._skalePoweredByUsbByDevice,

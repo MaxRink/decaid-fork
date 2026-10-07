@@ -98,6 +98,8 @@ void main() {
     await controller.setPreferredGrinderDeviceId('grinder-two');
     expect(controller.preferredGrinderDeviceId, 'grinder-two');
     expect(await service.preferredGrinderDeviceId(), 'grinder-two');
+  });
+
   group('SettingsController Skale USB settings', () {
     test('keeps values independent per exact device ID', () async {
       final settings = MockSettingsService();
