@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
+import 'package:reaprime/src/controllers/auxiliary_scale_registry.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
 import 'package:reaprime/src/controllers/scale_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
@@ -129,6 +130,7 @@ void main() {
     de1Handler.addRoutes(app);
     ScaleHandler(
       controller: scales,
+      auxiliaryScaleRegistry: AuxiliaryScaleRegistry(),
       de1Controller: controller,
       settingsController: settings,
     ).addRoutes(app);
