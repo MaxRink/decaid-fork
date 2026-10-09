@@ -202,8 +202,10 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
               (device) => _buildDeviceRadio(
                 name: device.name,
                 subtitle: _deviceSubtitle(device),
-                isSelected: selectedId == device.deviceId,
-                onTap: () => onSelected(device.deviceId),
+                isSelected: selectable && selectedId == device.deviceId,
+                onTap: selectable ? () => onSelected(device.deviceId) : null,
+                showSelection: selectable,
+                trailing: _settingsButton(device),
                 onConfigure: device is UsbPowerConfigurable
                     ? () => _showScaleSettings(device)
                     : null,
@@ -251,7 +253,9 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
     required String name,
     required String subtitle,
     required bool isSelected,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    bool showSelection = true,
+    Widget? trailing,
     VoidCallback? onConfigure,
   }) {
     return InkWell(
@@ -296,6 +300,7 @@ class _DeviceManagementPageState extends State<DeviceManagementPage> {
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: onConfigure,
               ),
+            ?trailing,
           ],
         ),
       ),
