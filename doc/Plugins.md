@@ -176,8 +176,8 @@ function createPlugin(host) {
 An external Skale plugin that owns the brewing scale can use
 `GET /api/v1/scale/connections` to capture the current primary source's
 `deviceId`, opaque `connectionId`, and `selectionId`. The projection contains
-only the brewing role in this single-device stage; the multi-scale follow-up
-will add dosing projection and wiring. Skale button decoding and its
+only the `primary` property in this stage. Auxiliary and dosing projections
+are separate work and do not change this contract. Skale button decoding and its
 default-off action setting remain plugin-owned; this host contract does not
 publish button events or Skale button-action tokens. The guarded request's
 machine and primary-source tokens remain part of this proposed host API.
@@ -193,7 +193,7 @@ requesting a guarded transition:
   "expectedState": "idle",
   "requireInactiveGhc": true,
   "sourceScale": {
-    "role": "brewing",
+    "role": "primary",
     "deviceId": "scale-1",
     "connectionId": "plugin-session-9",
     "selectionId": "runtime:brewing:7"
@@ -206,7 +206,7 @@ Use `PUT /api/v1/machine/state/espresso` for a guarded start and
 machine and inactive group-head controller; a stop requires an espresso
 machine and bypasses the queued write path and full gateway start restriction.
 Both transitions recheck the machine, source identity, and gateway before the
-hardware request. A stale or dosing source is rejected with 409. Malformed
+hardware request. A stale or non-primary source is rejected with 409. Malformed
 nonempty JSON and a non-boolean `guarded` key are rejected with 400; bodyless,
 ordinary legacy JSON, and `guarded: false` requests keep legacy behavior.
 

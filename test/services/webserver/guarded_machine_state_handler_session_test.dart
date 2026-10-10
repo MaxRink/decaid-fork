@@ -154,7 +154,7 @@ void main() {
         Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
       );
       final json = jsonDecode(await connections.readAsString());
-      expect(json['brewing'], isNull);
+      expect(json['primary'], isNull);
       pluginScales.dispose();
       plugin.dispose();
     },
@@ -182,7 +182,7 @@ void main() {
         Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
       );
       final projection = jsonDecode(await projectionResponse.readAsString());
-      final source = projection['brewing'] as Map<String, dynamic>;
+      final source = projection['primary'] as Map<String, dynamic>;
       final second = _TypedPluginScale(
         deviceId: 'plugin-scale',
         currentId: 'plugin-session-2',
@@ -199,7 +199,7 @@ void main() {
             'expectedState': 'idle',
             'requireInactiveGhc': true,
             'sourceScale': {
-              'role': 'brewing',
+              'role': 'primary',
               'deviceId': source['deviceId'],
               'connectionId': source['connectionId'],
               'selectionId': source['selectionId'],

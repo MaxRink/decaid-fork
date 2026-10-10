@@ -59,8 +59,8 @@ void main() {
       Request('GET', Uri.parse('http://localhost/api/v1/scale/connections')),
     );
     final connectionJson = jsonDecode(await connections.readAsString());
-    brewingConnectionId = connectionJson['brewing']['connectionId'] as String;
-    brewingSelectionId = connectionJson['brewing']['selectionId'] as String;
+    brewingConnectionId = connectionJson['primary']['connectionId'] as String;
+    brewingSelectionId = connectionJson['primary']['selectionId'] as String;
   });
 
   tearDown(() async {
@@ -72,7 +72,7 @@ void main() {
   Map<String, dynamic> guard({
     required String expectedState,
     required bool requireInactiveGhc,
-    String role = 'brewing',
+    String role = 'primary',
   }) => {
     'guarded': true,
     'expectedMachineId': machine.deviceId,
@@ -104,7 +104,9 @@ void main() {
       );
       expect(connections.statusCode, 200);
       final connectionJson = jsonDecode(await connections.readAsString());
-      expect(connectionJson['brewing']['deviceId'], 'brew-scale');
+      expect(connectionJson['primary']['deviceId'], 'brew-scale');
+      expect(connectionJson.keys, contains('primary'));
+      expect(connectionJson.containsKey('brewing'), isFalse);
       expect(connectionJson.containsKey('dosing'), isFalse);
 
       final state = await handler(
@@ -135,7 +137,14 @@ void main() {
     },
   );
 
-  test('rejects a dosing source and full gateway guarded start', () async {
+  test('rejects non-primary source and full gateway guarded start', () async {
+    final obsolete = await request(
+      'espresso',
+      guard(expectedState: 'idle', requireInactiveGhc: true, role: 'brewing'),
+    );
+    expect(obsolete.statusCode, 400);
+    expect(machine.requestedStates, isEmpty);
+
     final dosing = await request(
       'espresso',
       guard(expectedState: 'idle', requireInactiveGhc: true, role: 'dosing'),

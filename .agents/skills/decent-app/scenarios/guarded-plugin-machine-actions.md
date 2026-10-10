@@ -10,11 +10,11 @@ hardware is required.
 
 - Start Decaid with `scripts/sb-dev.sh start --platform linux --connect-machine MockDe1 --connect-scale MockScale` and wait for the REST server.
 - Confirm `GET /api/v1/machine/state` reports a connected machine in `idle`.
-- Confirm `GET /api/v1/scale/connections` returns an object with the current
-  primary (`brewing`) property. The property is either `null` or an object
+- Confirm `GET /api/v1/scale/connections` returns an object with exactly the
+  current `primary` property. The property is either `null` or an object
   containing string
-  `deviceId`, `connectionId`, and `selectionId`; no `dosing` property is
-  present in stage1.
+  `deviceId`, `connectionId`, and `selectionId`; no `brewing`, `auxiliary`, or
+  `dosing` property is present in this contract.
 
 Save the machine `deviceId` and `connectionGeneration`, and the three brewing
 identity fields from the two responses.
@@ -26,7 +26,7 @@ Send the saved values to the espresso route:
 ```sh
 curl -i -X PUT http://localhost:8080/api/v1/machine/state/espresso \
   -H 'content-type: application/json' \
-  --data '{"guarded":true,"expectedMachineId":"de1-simulated","expectedMachineGeneration":1,"expectedState":"idle","requireInactiveGhc":true,"sourceScale":{"role":"brewing","deviceId":"scale-simulated","connectionId":"<connectionId>","selectionId":"<selectionId>"}}'
+  --data '{"guarded":true,"expectedMachineId":"de1-simulated","expectedMachineGeneration":1,"expectedState":"idle","requireInactiveGhc":true,"sourceScale":{"role":"primary","deviceId":"scale-simulated","connectionId":"<connectionId>","selectionId":"<selectionId>"}}'
 ```
 
 Expect `200` and then an `espresso` machine state. A full gateway must reject

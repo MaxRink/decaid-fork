@@ -34,7 +34,7 @@ GuardedMachineAction _action(
   expectedState: expectedState,
   requireInactiveGhc: requireInactiveGhc,
   sourceScale: const GuardedScaleSource(
-    role: 'brewing',
+    role: 'primary',
     deviceId: 'brew-scale',
     connectionId: 'session-1',
     selectionId: 'selection-1',
