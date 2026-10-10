@@ -161,6 +161,18 @@ void main() {
     expect(machine.requestedStates, isEmpty);
   });
 
+  test('rejects a guarded start while the mock machine is sleeping', () async {
+    machine.emitStateAndSubstate(MachineState.sleeping, MachineSubstate.idle);
+
+    final response = await request(
+      'espresso',
+      guard(expectedState: 'idle', requireInactiveGhc: true),
+    );
+
+    expect(response.statusCode, 409);
+    expect(machine.requestedStates, isEmpty);
+  });
+
   test('ignores arbitrary non-guarded bodies for compatibility', () async {
     final response = await request('espresso', {'legacy': 'ignored'});
     expect(response.statusCode, 200);
