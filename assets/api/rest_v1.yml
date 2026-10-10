@@ -6524,7 +6524,8 @@ components:
           properties:
             role:
               type: string
-              enum: [brewing, dosing]
+              description: The guarded source role. Only primary is accepted for this action; dosing is reserved for explicit rejection so the host can distinguish it from malformed input.
+              enum: [primary, dosing]
             deviceId:
               type: string
             connectionId:
