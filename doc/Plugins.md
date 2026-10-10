@@ -345,6 +345,8 @@ Machine broadcasts require `events.machine`. Shot lifecycle broadcasts require
 
 The bundled Visualizer plugin merges recipe and shot-review tags, reads the current Visualizer tags before replacing them, and forwards later local edits in order. Visualizer tag writes require a Visualizer Premium account. The upload endpoint returns `202` with `visualizer_id` after the Visualizer upload succeeds while the tag PATCH continues in memory. Follow-up failures, including Visualizer's premium-account rejection, are reported through `shotForwardSyncError` and `forwardSyncStatus`; tag ownership is restored after an app or plugin restart. Pending work is not restored though.
 
+Upload folds the `grinderBurrs` snapshot recorded on the shot into the uploaded `grinder_model` (Visualizer has no separate field for them). Back-sync suppresses only a value that matches the string it uploaded, compared on normalized text, so a genuine remote edit still applies; an applied edit takes ownership of the field, clearing the shot's burrs snapshot so a re-upload does not decorate the edited text again — see `doc/AI_PLUGINS_NOTES.md` for why and how.
+
 ### Events from Plugin → Flutter
 
 Plugins can emit custom events that the Flutter app can listen to:
@@ -424,6 +426,26 @@ predicate makes the matcher a non-match. A definite match cannot win against an
 indeterminate competing driver. Two definite matches conflict. Discovery and connection
 admission still need to use these arbitration primitives.
 
+### Runtime-v2 session info
+
+Plugin-created and BLE-backed device connection contexts share
+`context.publishInfo(info)`. The device type defines the accepted fields.
+Publications use the existing plugin-generation, registration/binding and
+connection-session fencing and shared 64 KiB JSON payload bound. Oversized info
+returns `resource_limit`; retired contexts return `stale_session`.
+The shared device-request bridge rejects non-finite JavaScript numbers (`NaN`,
+`Infinity`, `-Infinity`), all boxed numbers (`new Number(...)`, including finite
+values), and primitive or boxed BigInt values (`1n`, `Object(1n)`) at any JSON depth
+with `invalid_argument` before serialization. This
+applies to info, snapshots and other device request payloads; explicit `null`
+remains supported.
+Session info clears when the connection retires, including replacement startup,
+disconnect, failed startup, reported connection/protocol failure, replacement or
+unregister, plugin unload/reload and dispose. Info does not satisfy readiness.
+Invalid info may propagate from a BLE notification callback without retiring an
+otherwise healthy connection; snapshot and protocol failures retain their
+existing failure semantics.
+
 ### Non-BLE Scale Registration
 
 Declare a Scale driver in the manifest. No `transport.ble` permission is needed:
@@ -486,6 +508,30 @@ Up to 256 initialization samples are retained for controller activation, then
 delivered once. Initialization is bounded; invalid samples cannot mark ready.
 Publication-ingress timestamps are provisional pending the required timing gate.
 
+#### Scale session info
+
+Both plugin-created and BLE-backed Scales use the
+[shared runtime-v2 session info lifecycle](#runtime-v2-session-info):
+
+```javascript
+await context.publishInfo({firmwareVersion: "R029", batteryLevel: 87});
+```
+
+Only `firmwareVersion` and `batteryLevel` are accepted. Firmware is an opaque
+string (including an empty string) or `null`. Battery is an integer from 0 to
+100 inclusive or `null`; a non-null battery requires the existing `battery`
+capability. Omitted fields preserve accepted values; explicit `null` clears
+that field. Empty objects, unknown keys, malformed values, capability mismatches
+and out-of-range values, including `NaN`, `Infinity`, `-Infinity`, all boxed
+numbers, and primitive or boxed BigInt values, return `invalid_argument` without
+changing accepted info.
+
+Accepted info is available to native `DeviceInformationCapable` consumers and
+`GET /api/v1/scale/info`; cleared fields are omitted from the response. Info is
+separate from weight snapshots and does not replace the valid-weight readiness
+requirement. No info enters device inventory, persistence or a new WebSocket.
+Existing v1 Scale plugins that never call `publishInfo` remain compatible.
+
 ### Grinder Registration
 
 Declare a Grinder driver with only the controls it supports:
@@ -507,6 +553,38 @@ Registered Scale, Sensor and Grinder adapters share a fixed
 `PluginDeviceSurfaceAuthority`: explicit plugin ownership, validated declared
 surfaces and one host URL resolver. Ownership is never inferred from `deviceId`.
 Grinder session availability filters this authority without changing declarations.
+
+### Native per-device settings
+
+Device management consumes the driver's declared surface with `role: "settings"`
+through `PluginDeviceSurfaceAuthority`. This applies to Scale, Sensor, Grinder,
+and other plugin-backed devices, without requiring a connection or filtering by
+session availability. Devices with no settings-role surface have no settings action.
+The host validates surfaces against declared same-plugin HTTP endpoints and the
+`api` permission when parsing the manifest.
+
+```json
+{
+  "permissions": ["api", "pluginStorage"],
+  "drivers": [{
+    "id": "grinder",
+    "type": "grinder",
+    "surfaces": [{"id": "settings", "role": "settings", "endpoint": "device-settings"}]
+  }],
+  "api": [{"id": "device-settings", "type": "http", "data": {}}]
+}
+```
+
+The native action opens the authority-built `href` against `http://localhost:8080`
+in the platform in-app browser, preserving its `ui=1`, `deviceId`, and optional
+display-only `deviceName` query. Native device management supplies the name to the
+shared authority, which encodes all query values once; the UI does not rebuild
+the query. The name is not identity, and ownership is not inferred from device IDs.
+Other authority callers that omit the name retain their existing hrefs. Only
+the current device instance may launch; retired, replaced, and unloaded instances
+are fenced. The plugin owns identity validation and per-device persistence through
+its namespaced KV store (`pluginStorage` permission), separate from plugin-global
+settings and native auto-connect preferences. No native mirror store is created.
 
 Both `host.devices.register` and BLE `host.devices.bindDriver` create the same
 runtime `PluginGrinder`. Every connection receives a fresh session context and
