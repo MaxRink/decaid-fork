@@ -1,10 +1,12 @@
 # Guarded plugin machine actions
 
 This scenario checks the stage1 REST contract used by an external Skale plugin
-controlling the brewing scale. Skale button decoding and its default-off
+using the primary scale. Skale button decoding and its default-off
 action setting remain plugin-owned; this host contract only validates the
 opt-in source-bound machine action. It uses the simulated device so no
-hardware is required.
+hardware is required. The external [Skale plugin](https://github.com/MaxRink/decaid-skale-plugin)
+currently excludes machine actions pending #845/#853 review; run this scenario
+with the host API directly.
 
 ## Preconditions
 
@@ -16,7 +18,7 @@ hardware is required.
   `deviceId`, `connectionId`, and `selectionId`; no `brewing`, `auxiliary`, or
   `dosing` property is present in this contract.
 
-Save the machine `deviceId` and `connectionGeneration`, and the three brewing
+Save the machine `deviceId` and `connectionGeneration`, and the three primary
 identity fields from the two responses.
 
 ## Guarded start
@@ -56,5 +58,5 @@ Also verify:
 ## Postconditions
 
 Restore the simulated machine to `idle` and leave the gateway in its original
-mode. Confirm the brewing projection is still internally consistent after any
+mode. Confirm the primary projection is still internally consistent after any
 reconnect or hot reload.
