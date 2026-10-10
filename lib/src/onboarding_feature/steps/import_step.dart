@@ -18,6 +18,7 @@ import 'package:reaprime/src/services/storage/profile_storage_service.dart';
 import 'package:reaprime/src/controllers/persistence_controller.dart';
 import 'package:reaprime/src/services/storage/storage_service.dart';
 import 'package:reaprime/src/settings/backup_import_response.dart';
+import 'package:reaprime/src/settings/backup_import_presentation.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/controllers/workflow_controller.dart';
 
@@ -31,6 +32,7 @@ OnboardingStep createImportStep({
   required SettingsController settingsController,
   required PersistenceController persistenceController,
   WorkflowController? workflowController,
+  Future<BackupImportResponse> Function(String filePath)? importBackup,
 }) {
   return OnboardingStep(
     id: 'import',
@@ -44,6 +46,7 @@ OnboardingStep createImportStep({
       settingsController: settingsController,
       persistenceController: persistenceController,
       workflowController: workflowController,
+      importBackup: importBackup,
     ),
   );
 }
@@ -57,6 +60,7 @@ class _ImportStepView extends StatefulWidget {
   final SettingsController settingsController;
   final PersistenceController persistenceController;
   final WorkflowController? workflowController;
+  final Future<BackupImportResponse> Function(String filePath)? importBackup;
 
   const _ImportStepView({
     required this.controller,
@@ -67,6 +71,7 @@ class _ImportStepView extends StatefulWidget {
     required this.settingsController,
     required this.persistenceController,
     this.workflowController,
+    this.importBackup,
   });
 
   @override
@@ -133,9 +138,9 @@ class _ImportStepViewState extends State<_ImportStepView> {
       if (localPath == null) {
         if (mounted) {
           setState(() => _phase = _ImportPhase.pickSource);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No Decent app data found')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No De1App data found')));
         }
         return;
       }
@@ -157,7 +162,7 @@ class _ImportStepViewState extends State<_ImportStepView> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('No Decent app data found')));
+      ).showSnackBar(const SnackBar(content: Text('No De1App data found')));
       return;
     }
 
@@ -174,51 +179,60 @@ class _ImportStepViewState extends State<_ImportStepView> {
     });
 
     try {
-      final bytes = await File(filePath).readAsBytes();
+      final importResponse =
+          await (widget.importBackup?.call(filePath) ?? _uploadZip(filePath));
+      final result = importResponse.toImportResult();
 
-      final client = HttpClient();
-      try {
-        final request = await client.postUrl(
-          Uri.parse('http://localhost:8080/api/v1/data/import?onConflict=skip'),
-        );
-        request.headers.contentType = ContentType('application', 'zip');
-        request.add(bytes);
-        final response = await request.close();
-        final responseBody = await response.transform(utf8.decoder).join();
+      widget.persistenceController.notifyShotsChanged();
 
-        final importResponse = BackupImportResponse.fromHttp(
-          response.statusCode,
-          responseBody,
-        );
-        final result = importResponse.toImportResult();
-
-        widget.persistenceController.notifyShotsChanged();
-
-        if (mounted) {
-          setState(() {
-            _importResult = result;
-            _phase = _ImportPhase.result;
-          });
-        }
-      } finally {
-        client.close();
+      if (mounted) {
+        setState(() {
+          _importResult = result;
+          _phase = _ImportPhase.result;
+        });
       }
     } catch (e) {
       _log.warning('Failed to import ZIP backup', e);
       if (mounted) {
+        final guidance =
+            e is BackupImportException && e.reason == 'too_many_entries'
+            ? e.userMessage
+            : null;
         setState(() {
           _importResult = ImportResult(
             errors: [
               ImportError(
                 filename: filePath.split('/').last,
-                reason: 'ZIP import failed',
-                details: e.toString(),
+                reason: guidance ?? 'ZIP import failed',
+                details: guidance == null ? e.toString() : null,
               ),
             ],
           );
           _phase = _ImportPhase.result;
         });
+        if (guidance != null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(backupImportErrorSnackBar(e as BackupImportException));
+        }
       }
+    }
+  }
+
+  Future<BackupImportResponse> _uploadZip(String filePath) async {
+    final bytes = await File(filePath).readAsBytes();
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(
+        Uri.parse('http://localhost:8080/api/v1/data/import?onConflict=skip'),
+      );
+      request.headers.contentType = ContentType('application', 'zip');
+      request.add(bytes);
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+      return BackupImportResponse.fromHttp(response.statusCode, responseBody);
+    } finally {
+      client.close();
     }
   }
 

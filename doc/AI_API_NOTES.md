@@ -5,7 +5,7 @@ Read this when changing REST endpoints, WebSocket topics, API specs, auth proxy,
 ## Source Of Truth
 
 - REST spec: `assets/api/rest_v1.yml` (OpenAPI 3.0). Always read before making calls.
-- WebSocket spec: `assets/api/websocket_v1.yml` (AsyncAPI 3.0).
+- WebSocket spec: `assets/api/websocket_v1.yml` (AsyncAPI 3.1.0).
 - Full endpoint reference: `doc/Api.md`.
 - Handler implementations: `lib/src/services/webserver/`.
 - Router registration: `lib/src/services/webserver/webserver_service.dart` `_init()`.
@@ -23,6 +23,25 @@ Read this when changing REST endpoints, WebSocket topics, API specs, auth proxy,
 - Error responses use `jsonBadRequest()` / `jsonError()` / `jsonNotFound()` helpers.
 - Content-based hash IDs for profile deduplication (`ProfileController`).
 - ETag / `If-None-Match` support on cacheable resources (#203).
+
+### Opaque external route IDs
+
+Sensor IDs supplied by external plugins are opaque strings: clients
+percent-encode one path component once, and the sensor route boundary decodes
+it once with `decodeOpaquePathComponent` before REST lookup or WebSocket
+subscription/rebind matching. Preserve literal `%`, `%ZZ`, trailing `%`,
+reserved characters, Unicode, plus signs, and `%252F` decode-once behavior;
+invalid UTF-8 is rejected with HTTP 400 at the Shelf boundary.
+
+`Request.url.queryParameters` is already decoded and must not use the path
+helper. Plugin HTTP and WebSocket endpoint routes also decode plugin and
+endpoint IDs once before lookup or subscription matching; generated device
+surface hrefs encode both components once. Surface endpoint validation rejects
+unpaired UTF-16 surrogates because URI encoding replaces them with U+FFFD;
+valid surrogate pairs, encoded control characters, and whitespace round-trip.
+Host-assigned UUID resource IDs,
+plugin management/KV/skin/file/command paths, and account-proxy normalization
+retain their existing route contracts.
 
 ### Patch Nullability
 
@@ -125,6 +144,16 @@ could not produce.
 ## WebSocket Conventions
 
 - WebSocket topics are path-based: `/ws/v1/machine/state`, `/ws/v1/machine/shotState`, `/ws/v1/scale/snapshot`, etc.
+
+Scale paths are split by compatibility boundary: singular `/scale/*` routes
+remain primary-only, while `/scales/{id}/tare` and
+`/ws/v1/scales/{id}/snapshot` address a connected primary or auxiliary scale.
+Scale IDs are opaque URI path components: clients encode once and handlers use
+the shared one-decode helper. Auxiliary sessions are runtime-only and never
+enter shot sequencing or persisted preferences.
+The addressed snapshot stream uses the raw `ScaleSnapshot.toJson()` payload
+for both roles (`timestamp`, `weight`, `batteryLevel`, `timerValue`, `flow`);
+the legacy singular stream retains its existing `WeightSnapshot` payload.
 - `ShotSequencer` emits structured `ShotDecision`s (why a step advanced, why the shot stopped).
 - `SteamSequencer` manages steam session lifecycle (start on entry, finalize on exit).
 - Presence tracking via `PresenceController` — client keep-alive.
@@ -345,6 +374,14 @@ of records and one JSON record, never with backup size. Rationale and traps:
   (`util/temp_archive_files.dart`), deleted in `finally` or on stream
   cancel/done. Native export defers cleanup (grace timer) because the OS
   share sheet reads the file asynchronously.
+- **Native share anchors**: full backup, recovery package, and import Share
+  Report resolve their initiating widget's bounds immediately before the mobile
+  share call, not before asynchronous file preparation. Desktop save dialogs do
+  not resolve geometry. An unmounted or offscreen action fails without a fallback
+  anchor: archive delivery cleans up and propagates to the existing UI error
+  handler; Share Report uses its existing error handler. Mounted views show the
+  error; disposed views suppress UI updates. Native iPad presentation still
+  requires hardware verification, including resize during preparation.
 - **Legacy compatibility**: entry names, JSON shapes (including
   `store.json`'s `namespaces` wrapper and beans' embedded `batches`),
   `metadata.json` semantics, conflict strategies, selected-section behavior,

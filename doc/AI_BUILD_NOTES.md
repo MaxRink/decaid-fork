@@ -133,6 +133,40 @@ temporary real-hardware tuning builds where debug endpoints must be reachable.
 - Android uses `ForegroundTaskService` for background BLE. Auto-stops 5min after disconnect; auto-restarts on reconnect.
 - `Makefile` targets: `build-arm`, `build-amd`, `dual-build` (Linux only, requires Docker/Colima).
 
+## Skin Camera Permissions on Apple Platforms
+
+iOS uses the existing permission handler after per-skin consent. Swift Package
+Manager derives camera support from `NSCameraUsageDescription`; the CocoaPods
+build defines `PERMISSION_CAMERA=1`. macOS uses the
+`com.reaprime/skin_camera` method channel in `MainFlutterWindow` because the
+installed permission handler does not provide a macOS backend. Keep
+`NSCameraUsageDescription` and the camera entitlement in both Debug/Profile
+and Release builds. Neither path requests microphone access.
+
+Keep `NSMicrophoneUsageDescription` in the iOS app plist for native file-input
+recording. PR #939's iPhone crash report confirms that the iOS system video
+picker configures an audio input and TCC kills the process without this key,
+before the Dart permission callback runs. The description lets iOS ask for
+permission; it does not grant access. Native iOS video can include audio after
+OS consent. Keep live WebView microphone requests denied and do not add the
+macOS microphone description or audio-input entitlement. The pinned macOS file
+picker uses NSOpenPanel and does not record video.
+Run `python3 tool/ci/check_apple_camera_privacy_test.py` to check these privacy
+declarations and the macOS entitlement boundary. Normal PR CI runs this
+lightweight cross-platform check, not native Apple builds. PR #939 obtained
+successful unsigned iOS/macOS release compilation on `b5a50097` with Flutter
+3.44.2 and Xcode 26.3; see the evidence in
+`doc/plans/archive/skin-camera/native-video-privacy.md`. The temporary build
+jobs and unsigned symbol-upload bypass were removed afterward; this camera
+fix does not change the repository's Apple build or symbol-upload policy.
+
+The pinned WebView plugin exposes WKWebView media permission callbacks on iOS
+15+ and macOS 12+, but not an Apple file-input chooser callback. Do not treat
+live-camera consent as a native file-input capture guard. Another tester must
+verify system privacy prompts, localhost capture and lifecycle behavior on
+real Apple devices; neither CI compilation nor Windows widget tests cover
+those runtime paths.
+
 ## Footgun #1: Xcode 26.4 / flutter_inappwebview
 
 **Symptom:** `flutter build macos` fails with `Swift 6.3 error: protocol 'ASWebAuthenticationPresentationContextProviding' requires 'presentationAnchor(for:)' to be available in macOS 10.14 and newer`.
@@ -203,6 +237,40 @@ Platform results must be observed independently on each claimed platform.
 **Fix (PR #609):** `SecurityScopedFilePlugin` (`ios/Runner/AppDelegate.swift`, channel `com.reaprime/security_scoped`) calls `startAccessingSecurityScopedResource` on the reconstructed URL and retains it until Dart releases it. `SecurityScopedFileService` (Dart) wraps every `getDirectoryPath` pick site: plugin install, de1app import, skin live-edit, data restore. The service auto-releases the previously held folder on the next pick, keeping the native registry bounded; `stopAccessing` releases explicitly (plugin install releases after the staged copy). Access is deliberately held for the session for long-lived flows (skin live-edit serves the folder over HTTP on demand).
 
 **Impact:** iOS only; the channel is a no-op elsewhere (`Platform.isIOS` guard). Do not add new `FilePicker.getDirectoryPath()` consumers without routing them through `SecurityScopedFileService`.
+
+## Footgun #6: macOS App Sandbox grants only the selected save URL, not its siblings
+
+**Symptom:** an export that stages a temporary file next to the user's chosen
+save path works on Linux, Docker and CI, then fails in the signed macOS build
+with a permission error.
+
+**Root cause:** the macOS build runs with `com.apple.security.app-sandbox` and
+`com.apple.security.files.user-selected.read-write`
+(`macos/Runner/Release.entitlements`). The file picker grants access to the
+selected URL, not to arbitrary files in its directory, so creating a sibling
+temporary file or staging directory is denied. It does not reproduce on Linux
+because the Linux build is unsandboxed.
+
+**Handling:** stage in the app's own temporary directory (`TempArchiveDir`, i.e.
+`Directory.systemTemp`) and copy the finished file onto the selected path.
+`writeArchiveToDestination` (`lib/src/services/export/archive_export.dart`) does
+exactly this. Do not stage beside a user-selected destination. Do not substitute
+a plain `File.rename` as the final step either: it does not overwrite an
+existing destination on Windows, and it crosses directories that the sandbox may
+not permit.
+
+## Footgun #7: A fresh git worktree cannot build Android
+
+**Symptom:** `scripts/sb-dev.sh start --platform <serial>` inside a linked git
+worktree fails with
+`Execution failed for task ':app:validateSigningDebug'` /
+`Keystore file '<worktree>/android/app/debug.keystore' not found for signing config 'debug'`.
+
+**Root cause:** `android/app/debug.keystore` is gitignored, so it exists only in
+the primary checkout; `git worktree add` does not copy it.
+
+**Handling:** copy it from the primary repo before building:
+`cp <primary>/android/app/debug.keystore <worktree>/android/app/debug.keystore`.
 
 ## CLI Parameters
 

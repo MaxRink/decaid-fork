@@ -1,5 +1,20 @@
 # Device Management in Decaid
 
+## Scale connection ownership
+
+ScaleController owns the single primary scale used by brewing and shot logic.
+Additional scales are runtime-only auxiliary sessions in the auxiliary scale
+registry. Auxiliary sessions have no persisted preference or Decaid role; an
+explicit API client selects a discovered device and supplies the auxiliary
+connection role. Primary automatic selection excludes reserved auxiliary IDs.
+Disconnect releases only that auxiliary reservation after transport cleanup.
+
+When a Bengle is primary, automatic external primary-scale selection remains
+disabled and the integrated Bengle scale remains the ScaleController scale.
+Explicit auxiliary discovery and connection still use the normal device scanner
+and may connect an external scale concurrently. Auxiliary snapshots and tare
+commands never enter ShotSequencer or stop-at-weight logic.
+
 This document explains how devices (DE1 machines, scales, sensors) are discovered, connected, and managed throughout the Decaid application lifecycle.
 Open the management page from Settings > Devices or from the dashboard.
 
@@ -85,6 +100,7 @@ Discovery services are responsible for scanning and creating device instances. E
   - `lib/src/services/serial/serial_service_android.dart` (Android)
   - `lib/src/services/serial/serial_service.dart` (factory)
 - **Discovery:** Enumerates serial ports, probes for device identification
+- **Desktop serial identity:** One canonical id is resolved once per enumerated port: `usb-{vid}-{pid}-{serial}` (plus `-ifNN` for interfaces above 0) when USB descriptors are available, otherwise `serial-<basename>`. Candidates are deduplicated before probing, so a macOS adapter exposed as both `/dev/cu.X` and `/dev/tty.X` appears once and `/dev/cu.X` is the endpoint probed. The resolved id is injected into the transport and is the value used for scan dedup, `Device.deviceId`, remembered devices and API inventory. `serial-<basename>` stays accepted as a legacy quick-connect alias; after a successful alias connect the remembered record and `preferredMachineId` migrate to the canonical id. Android keeps its existing `UsbDevice.deviceId`-suffixed identities.
 - **HDS USB readiness:** `HDSSerial` enables the 10 Hz OpenScale binary stream and remains `connecting` until a checksum-valid weight frame arrives. Its buffered decoder accepts fragmented/coalesced frames mixed with firmware text; only valid weight frames refresh the watchdog.
 
   DE1-family detection uses product names and the normal protocol probe:
@@ -389,6 +405,49 @@ List<Device> get devices =>
 
 The ConnectionManager is the centralized orchestrator for all device connection decisions. It replaces the previously scattered auto-connect logic that was spread across DeviceController, ScaleController, and De1StateManager.
 
+### Pending connect attempts
+
+Machine and primary-scale connects each carry their own attempt record: the
+attempted device instance, its device ID and transport type, a scan/session
+owner, and invalidated/source-pending flags. The device controller checks its
+connection generation after source connect and scale readiness before
+publishing a candidate, so an attempt invalidated while its source work was
+still running cannot adopt the late candidate.
+
+Invalidating an attempt releases admission immediately; a replacement connect
+is admitted without waiting for the stale source to settle. The stale attempt's
+record drives its own settlement and cleanup:
+it retires the exact device instance it attempted once its source work settles,
+including when the source throws after opening a physical link and before
+controller adoption, or when a candidate was already adopted before a
+preference write finished. Cleanup cannot start while the source is pending.
+Retirement is deferred for a same-link replacement: a different adopted
+instance, or a newer current attempt, with the same device ID and transport
+type, since they may share one physical link; that is logged as a deferred
+same-link replacement and the attempt is released. A current replacement owns
+any deferred retirement until it settles: adoption discards it; failure or
+invalidation retires the stale link (or transfers it to another current
+replacement). The current-attempt check matters because a
+same-link replacement can be mid-connect before it is adopted, and a stale BLE
+disconnect is not instance-local: `UniversalBle.disconnect(deviceId)` runs
+behind the per-device lifecycle gate, so an adopted-only check would let the
+stale attempt tear down the replacement's link. The current-attempt clause is
+limited to BLE for that reason; serial and WiFi closes only their own port or
+socket, so a stale instance on those transports is retired unless a same-link
+replacement is already adopted. A different device ID or transport type is
+retired independently as well. If disconnect
+fails, the attempt is quarantined, the failure is reported, and an explicit
+disconnect retries retirement; a quarantined attempt never blocks a new
+connect. Shutdown waits for pending source work and retirement before teardown.
+
+Timeout, cancellation from the scan or selection session that owns the attempt,
+adapter loss for a BLE attempt, explicit disconnect, and shutdown invalidate
+pending attempts. Cancelling a scan or selection session only invalidates the
+attempt it owns, so an unrelated direct REST/WS or background watch connect
+survives the cancellation. The coordinated USB attach handover retains its
+separate adopt-then-release path. An already-started preference-service write
+is not cancelled by an attempt fence.
+
 ### Connection Status
 
 ConnectionManager exposes a `ConnectionStatus` stream driven by the
@@ -538,8 +597,9 @@ indefinitely because nothing ever rescanned for the machine.
 
 When a machine is connected but the preferred scale is missing (scale
 powered off, unexpected drop, machine wake without the scale), scale
-reacquisition runs in one of two modes, selected by
-`DeviceScanner.supportsBackgroundWatch`:
+reacquisition uses the background watch only when the preferred scale's
+transport is BLE (or unknown) and `DeviceScanner.supportsBackgroundWatch` is
+true. Known serial and WiFi scales use the legacy burst/backoff path:
 
 - **Watch mode (Android):** one persistent, low-duty-cycle BLE scan.
   `UniversalBleDiscoveryService` starts an `AndroidScanMode.balanced`
@@ -557,8 +617,8 @@ reacquisition runs in one of two modes, selected by
   typically 1–5s after the scale powers on. Caveat: Android suspends
   OS-unfiltered scans while the screen is off, so a scale powered on
   with the display asleep connects once the screen wakes.
-- **Legacy mode (all other platforms, and fallback when the watch fails
-  to start):** periodic 15s scale-only burst scans with 5s→60s
+- **Legacy mode (unsupported transports/platforms, and fallback when the
+  watch fails to start):** periodic 15s scale-only burst scans with 5s→60s
   exponential backoff (the pre-watch behavior, unchanged).
 
 The watch replaced the backoff loop on Android because each lowLatency
@@ -566,6 +626,19 @@ burst monopolizes the shared radio and starves DE1 GATT traffic
 (observed as 10s GATT write timeouts → HTTP 500s on machine endpoints),
 while the backoff gaps meant a freshly powered-on scale could wait up
 to 60s to connect.
+
+### Protected post-wake preferred-scale reacquisition
+
+After a sleeping-to-awake transition with the preferred scale disconnected and
+background `ScaleWatch` selected, `ConnectionManager` protects the watch during
+the existing 3-second wake window. REST and devices-WebSocket explicit scans,
+including discovery-only requests, are deferred and coalesced rather than
+preempting the watch. Scale reconnection, machine disconnection, a cleared
+preferred scale, or shutdown drops the pending request; otherwise at most one
+deferred scan runs after the window (and any active connection work). Machine
+recovery is never deferred by this scale lease. A native in-app scan
+(`scanAndConnect()`, launcher and retry UI) supersedes a deferred
+discovery-only request and still performs the full connection policy.
 
 Watch lifecycle details:
 
@@ -665,6 +738,7 @@ This is the safety net. Device implementations should ALSO catch
 Device preferences are stored via `SettingsController`:
 - `preferredMachineId` — auto-set on successful machine connection
 - `preferredScaleId` — auto-set on successful scale connection
+- `preferredGrinderDeviceId` — auto-set on successful runtime grinder connection
 - Configurable in Settings → Device Management
 
 Identity remains per transport. BLE and USB IDs for the same physical machine
@@ -727,6 +801,8 @@ Future<void> connectToDe1(De1Interface de1Interface) async {
 
 Device implementations define their own readiness gate before `ScaleController` adopts them. Acaia requires its first structurally valid weight frame. AtomHeart Eclair likewise waits for its first valid weight frame, with two bounded notification re-subscriptions before a silent connection is rejected. An awake Decent Scale connection requires a recognised FFF4 status or weight frame, retrying the subscription and status probe once after two seconds. A deliberately sleeping reconnect restores the subscription while remaining dark and defers readiness verification until wake. Successful GATT setup or arbitrary notifications alone are not connected readiness. A mute transport is torn down without powering off the scale, and normal ConnectionManager recovery remains responsible for retrying.
 
+Decent Scale sleep is capability-gated but never intentionally disconnects a healthy link. After a connection is confirmed the scale runs an unawaited profile negotiation: the canonical LED ON/status command (`0A 01`, heartbeat byte `00`) followed by the HDS `0x22` voltage probe. Only a valid `0x22` response promotes the connection to Half Decent Scale capabilities (extended commands and power off). `displayOff` sends the shared `0A 00` display-off command and keeps the connection for unknown, original and pre-modern HDS scales; proven HDS SoftSleep (`0A 04`) is attempted first and falls back to `0A 00` on failure. Wake restores the same connection (`0A 01`, or `0A 04 00` then `0A 01` after SoftSleep). Decent Scale no longer advertises `DisconnectToSleepScale`, so `De1StateManager` does not mark it sleeping on machine sleep. Power-off is withheld unless the profile proves support. Capabilities are re-confirmed on every physical connection and are discarded if a response arrives after a reconnect.
+
 **Connection Flow:**
 ```dart
 Future<void> connectToScale(Scale scale) async {
@@ -759,7 +835,7 @@ sensor is connected, skins can call the `measure` command through the existing
 Sensors API and read TDS, temperature, refractive index, and status values from
 the sensor data stream.
 
-`PluginDeviceService` is a `DeviceDiscoveryService` that contributes sensors
+`PluginDeviceService` is a `DeviceDiscoveryService` that contributes devices
 registered by plugin generations. This keeps plugin-backed sensors on the same
 `DeviceController` → `SensorController` path as native sensors. Public identity
 comes from plugin id, declared driver id, and plugin-local instance id; unload
@@ -767,6 +843,42 @@ removes the retiring generation without changing that identity for a later
 reload. Plugin connection handlers must complete protocol initialization before
 the sensor reports `connected`. Registrations are runtime-only and are not added
 to remembered-device selection.
+
+### GrinderController
+
+`GrinderController` owns one selected runtime `GrinderDevice`, its latest
+validated snapshot, and command forwarding. Replacement disconnects the old
+instance and generation-fences late publications. New snapshot subscribers
+receive the current projection immediately. Disconnect and replacement clear
+the retained snapshot before asynchronous teardown, without emitting null frames.
+`ConnectionManager.connectGrinder()` uses this controller from
+the generic devices API and connects `preferredGrinderDeviceId` only when that
+device appears in an existing normal scan result, after machine and primary-scale
+selection resolves and policy settles. While either primary picker is pending,
+the grinder attempt remains deferred. Cancellation or a superseding scan discards
+the deferred candidates. Grinder initialization runs independently of primary
+readiness, selection and scale recovery; failures never change machine/scale connection
+status. Plugin protocol initialization has the same default 10-second budget for
+network and BLE grinders. It adds no grinder scanner or reconnect scheduler, and
+does not participate in early stopping, primary ambiguity resolution or scale-only
+scans.
+
+Runtime grinder identity is not equipment metadata. Persisted `Grinder.id` is a
+UUID used by `/api/v1/grinders` and workflow records. `GrinderDevice.deviceId`
+identifies a live transport/plugin device. `preferredGrinderDeviceId` stores
+that runtime `deviceId`, never the persisted UUID. Optional fixed Grinder
+control descriptors and session overrides live only on the selected runtime
+device, updated through the connection's `context.publishInfo({controls, surfaces})`
+rather than snapshot publication. Info shares generation/registration/session
+fencing and cleanup with snapshots. Scale, Sensor and Grinder adapters carry
+the same fixed `PluginDeviceSurfaceAuthority`; Grinder session availability is
+a filter over those validated declarations. The controller validates effective descriptors before commands reach
+BLE-backed or plugin-created Grinders, without modifying the requested value.
+The connected Grinder info endpoint projects these effective controls and
+currently available host-validated plugin surfaces; inventory and snapshots
+never contain this metadata. A surface URL includes the query-encoded runtime
+identity, not the persisted UUID. The host does not infer plugin ownership from
+a device-id prefix.
 
 ### Bengle EBus tap
 
@@ -812,7 +924,7 @@ of vanishing. Cross-transport (BLE/USB/WiFi) by construction.
   `{id, name, type}` off the connected device. A null emission (disconnect)
   does **not** forget — the device stays remembered.
 - **Availability:** computed at the API layer. `DevicesStateAggregator` /
-  `DevicesHandler` merge discovered devices and the actively connected scale
+  `DevicesHandler` merge discovered devices and the actively connected scale or grinder
   (`available: true`) with remembered devices that aren't present
   (`available: false`, `state: "disconnected"`) via the shared
   `buildAvailabilityDeviceList`. The aggregator re-emits when the registry or
@@ -951,7 +1063,7 @@ never retain the disconnected instance beside its connected replacement.
    ↓
 2. Create discovery services with device mappings
    ↓
-3. Create DeviceController(services), De1Controller, ScaleController
+3. Create DeviceController(services), De1Controller, ScaleController, GrinderController
    ↓
 4. Create RememberedDevicesController, initialize (loads + migrates registry)
    ↓
@@ -991,6 +1103,22 @@ The legacy `home_feature` StatusTile reconnect affordance is retired. Native
 scan and retry controls call `scanAndConnect()`, so they perform a complete
 scan before filling missing slots. The launcher’s **Connect your machine** hero
 opens `LauncherScanPage`, which reuses this scan-first flow.
+
+### Scale Power Settings
+
+`scalePowerMode` controls automatic power management for the primary scale.
+With `disabled` (keep scale on), machine sleep sends no scale power command.
+On graceful app exit, Decaid releases the transport without sending power-off
+when the driver supports `TransportHandoffScale`, including Decent BLE scales.
+This also applies when a primary-scale connection finishes during shutdown or
+an invalidated connection attempt still needs retirement cleanup.
+Drivers without that capability use their normal disconnect operation.
+Explicit user-requested disconnects and auxiliary-scale cleanup are unchanged.
+
+Settings changes apply to the next machine-state transition or graceful exit;
+no web-server or app restart is needed. Changing the setting does not undo a
+power action already taken while the machine was sleeping. Firmware auto-sleep
+and operating-system force stops remain outside this setting's guarantees.
 
 ### Machine Wake → Scale Reconnect Flow
 
@@ -1487,6 +1615,12 @@ flutter run --dart-define=simulate=machine,scale   # Simulate DE1 and scale
 
 Supported types: `machine` (DE1), `bengle`, `scale`, `sensor` (comma-separated).
 
+`MockScale` resumes weight snapshots after disconnecting and reconnecting,
+including when reconnecting as an auxiliary scale. Its selected simulated
+machine is retained across disconnects, so reconnecting without another scan
+also resumes machine-driven weight. Calling `onConnect()` on an already
+connected scale preserves an intentional simulated data stall.
+
 `simulate=1` enables every type, so it surfaces both `MockDe1` and
 `MockBengle` simultaneously — `ConnectionManager`'s preferred-device
 policy picks one. For deterministic behavior in tests / CI prefer the
@@ -1707,10 +1841,35 @@ does not trigger native fallback in the same attempt. A timed-out teardown retai
 the claim until native disconnection is confirmed. Adapter loss revokes sessions
 without attempting protocol cleanup over a lost link.
 
-Plugin Sensors join the existing SensorController and REST/WebSocket APIs. Their
+Plugin Sensors and Grinders join the existing controller and REST/WebSocket APIs. Their
 public IDs include plugin, driver, and physical identity. Remembered plugin IDs
 are not reconstructed through native quick-connect: fresh discovery must establish
-current ownership. See `doc/Plugins.md` for the session-bound GATT contract.
+current ownership. A BLE plugin driver may keep up to 4 physical bindings active
+at once; each binding owns its own transport, session, publications, and teardown
+claim. See `doc/Plugins.md` for the session-bound GATT contract.
+
+## Plugin device settings
+
+Device management offers a **Device settings** action on each current
+plugin-backed device whose driver declares a validated surface with
+`role: "settings"`. Scale, Sensor, Grinder, and other plugin devices use the
+same `PluginDeviceSurfaceAuthority`. The action uses declared surfaces without
+connection/session availability filtering, so settings can open before connecting.
+The owning plugin runtime must be active: settings eligibility is revoked when
+the owning generation starts retiring, before asynchronous disconnect finishes.
+Button visibility and launch refusal use the same runtime-liveness gate.
+Machine, Scale, and Grinder auto-connect preferences remain independent; other
+devices with settings surfaces appear in a neutral listing.
+
+The action resolves the authority-built relative `href` against
+`http://localhost:8080` and opens it in the platform in-app browser. Its query is
+`ui=1`, the exact runtime `deviceId`, plus an optional display-only `deviceName`,
+encoded once by the authority. Native device management supplies the device name;
+it is not identity. Retired, replaced, or unloaded device instances cannot
+launch settings, even if a replacement reuses the same ID. A failed launch shows
+`Unable to open device settings.` The plugin validates identity and owns
+persistence through its existing namespaced KV store; there is no native mirror
+store or ownership inference from device IDs.
 
 ## Glossary
 

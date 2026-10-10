@@ -4,12 +4,14 @@ Pick the scenario that matches the task and run it before calling related work d
 
 | Scenario | File |
 |---|---|
+| Backup import entry-count limit | `scenarios/backup-import-entry-limit.md` |
 | Account proxy native consent gate | `scenarios/account-proxy-consent.md` |
 | Account proxy CORS pinned to skin origin | `scenarios/account-proxy-cors.md` |
 | Account proxy write forwarding and scope gate | `scenarios/account-proxy-write.md` |
 | API pressure hardening | `scenarios/api-pressure-hardening.md` |
 | Bengle cup warmer, preheat, and capability discovery | `scenarios/bengle-cup-warmer.md` |
 | Bengle integrated scale | `scenarios/bengle-integrated-scale.md` |
+| Bengle primary with an auxiliary scale | `scenarios/auxiliary-scale-connections.md` |
 | Bengle LED strip v2 | `scenarios/bengle-led-strip.md` |
 | Bengle scale calibration | `scenarios/bengle-scale-calibration.md` |
 | Bengle firmware wake-schedule sync | `scenarios/bengle-wake-schedule.md` |

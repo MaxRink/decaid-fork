@@ -25,8 +25,10 @@ import 'package:reaprime/src/controllers/hot_water_sequencer.dart';
 import 'package:reaprime/src/controllers/steam_sequencer.dart';
 import 'package:reaprime/src/controllers/connection_error.dart';
 import 'package:reaprime/src/controllers/connection_manager.dart';
+import 'package:reaprime/src/controllers/auxiliary_scale_registry.dart';
 import 'package:reaprime/src/controllers/de1_controller.dart';
 import 'package:reaprime/src/controllers/device_controller.dart';
+import 'package:reaprime/src/controllers/grinder_controller.dart';
 import 'package:reaprime/src/controllers/remembered_device_sources.dart';
 import 'package:reaprime/src/controllers/remembered_devices_controller.dart';
 import 'package:reaprime/src/controllers/display_controller.dart';
@@ -72,6 +74,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:reaprime/src/services/storage/hive_store_service.dart';
 import 'package:reaprime/src/database_failure_view.dart';
+import 'package:reaprime/src/services/export/support_package.dart';
+import 'package:reaprime/src/services/storage/database_recovery.dart';
 import 'package:reaprime/src/services/universal_ble_discovery_service.dart';
 import 'package:reaprime/src/services/simulated_device_service.dart';
 import 'package:reaprime/src/services/webserver/data_export/backup_data_sources.dart';
@@ -375,17 +379,22 @@ void main(List<String> args) async {
       DatabaseFailureApp(
         logFilePath: '$logDir/log.txt',
         detail: databaseStartupError.runtimeType.toString(),
+        onSavePackage: (resolveShareOrigin) =>
+            saveSupportPackage(sharePositionOrigin: resolveShareOrigin),
+        onResetDatabase: () async =>
+            (await DatabaseReset.fromAppDirectories()).run(),
       ),
     );
     return;
   }
 
-  final persistenceController = PersistenceController(
-    storageService: DriftStorageService(appDatabase),
-  );
-
   final beanStorage = DriftBeanStorageService(appDatabase);
   final grinderStorage = DriftGrinderStorageService(appDatabase);
+
+  final persistenceController = PersistenceController(
+    storageService: DriftStorageService(appDatabase),
+    grinderStorageService: grinderStorage,
+  );
   final profileStorage = DriftProfileStorageService(appDatabase);
 
   final WorkflowController workflowController = WorkflowController();
@@ -411,6 +420,8 @@ void main(List<String> args) async {
   final de1Controller = De1Controller(controller: deviceController)
     ..defaultWorkflow = workflowController.currentWorkflow;
   final scaleController = ScaleController();
+  final grinderController = GrinderController();
+  final auxiliaryScaleRegistry = AuxiliaryScaleRegistry();
   final sensorController = SensorController(controller: deviceController);
 
   final rememberedDevicesController = RememberedDevicesController(
@@ -427,6 +438,8 @@ void main(List<String> args) async {
     deviceScanner: deviceController,
     de1Controller: de1Controller,
     scaleController: scaleController,
+    grinderController: grinderController,
+    auxiliaryScaleRegistry: auxiliaryScaleRegistry,
     settingsController: settingsController,
     rememberedDevices: rememberedDevicesController,
   );
@@ -593,7 +606,6 @@ void main(List<String> args) async {
   if (Platform.isAndroid || Platform.isIOS) {
     batteryController = BatteryController(
       de1Controller: de1Controller,
-      deviceController: deviceController,
       settingsController: settingsController,
     );
   }
