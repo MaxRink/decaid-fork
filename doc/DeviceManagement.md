@@ -965,9 +965,10 @@ are keyed by exact device ID, default to `false`, and are persisted and
 exported. This is a manual power-source declaration for each Skale device;
 while enabled, that device's battery reads and refresh polling stop, its
 battery value is cleared, and metadata reports `powerSource: usb` with
-`powerSourceProvenance: manualOverride`. Disabling it immediately resumes a
-battery read and the normal refresh interval. Other scale implementations and
-other Skale devices are unaffected.
+`powerSourceProvenance: manualOverride`. Disabling it clears the manual state
+immediately and resumes a battery read and the normal refresh interval when the
+device exposes the Battery Service; otherwise battery remains unknown. Other
+scale implementations and other Skale devices are unaffected.
 
 ### Bengle integrated scale
 
