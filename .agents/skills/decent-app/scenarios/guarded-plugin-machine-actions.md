@@ -1,14 +1,18 @@
 # Guarded plugin machine actions
 
-This scenario checks the stage1 REST contract for a plugin controlling the
-brewing scale. It uses the simulated device so no hardware is required.
+This scenario checks the stage1 REST contract used by an external Skale plugin
+controlling the brewing scale. Skale button decoding and its default-off
+action setting remain plugin-owned; this host contract only validates the
+opt-in source-bound machine action. It uses the simulated device so no
+hardware is required.
 
 ## Preconditions
 
 - Start Decaid with `scripts/sb-dev.sh start --platform linux --connect-machine MockDe1 --connect-scale MockScale` and wait for the REST server.
 - Confirm `GET /api/v1/machine/state` reports a connected machine in `idle`.
-- Confirm `GET /api/v1/scale/connections` returns an object with a `brewing`
-  property. The property is either `null` or an object containing string
+- Confirm `GET /api/v1/scale/connections` returns an object with the current
+  primary (`brewing`) property. The property is either `null` or an object
+  containing string
   `deviceId`, `connectionId`, and `selectionId`; no `dosing` property is
   present in stage1.
 
@@ -39,6 +43,8 @@ or runtime restart must return `409` and leave the machine unchanged.
 Also verify:
 
 - a guarded request with `sourceScale.role: "dosing"` returns `409`;
+- a guarded start while the machine is sleeping is rejected; the contract has
+  no wake path;
 - a machine in `sleeping`, an active GHC, or a missing machine returns `409`;
 - malformed nonempty JSON and a non-boolean `guarded` key return `400` without
   a machine write;

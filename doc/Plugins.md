@@ -173,10 +173,14 @@ function createPlugin(host) {
 
 ## Guarded machine actions
 
-Plugins that own a brewing scale can use `GET /api/v1/scale/connections` to
-capture its current `deviceId`, opaque `connectionId`, and `selectionId`. The
-projection contains only the brewing role in this single-device stage; the
-multi-scale follow-up will add dosing projection and wiring.
+An external Skale plugin that owns the brewing scale can use
+`GET /api/v1/scale/connections` to capture the current primary source's
+`deviceId`, opaque `connectionId`, and `selectionId`. The projection contains
+only the brewing role in this single-device stage; the multi-scale follow-up
+will add dosing projection and wiring. Skale button decoding and its
+default-off action setting remain plugin-owned; this host contract does not
+publish button events or Skale button-action tokens. The guarded request's
+machine and primary-source tokens remain part of this proposed host API.
 
 Pass the captured identity together with a fresh machine state response when
 requesting a guarded transition:

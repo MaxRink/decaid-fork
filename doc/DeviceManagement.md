@@ -1247,9 +1247,10 @@ Constraints:
 
 ### Guarded plugin machine actions
 
-The REST machine-state route has an opt-in guarded body for plugin-owned
-brewing scale controls. `GET /api/v1/scale/connections` supplies the brewing
-scale's physical device ID and opaque connection and selection identities. A
+The REST machine-state route has an opt-in guarded body for an external Skale
+plugin's brewing-scale controls. `GET /api/v1/scale/connections` supplies the
+brewing scale's physical device ID and opaque connection and selection
+identities. A
 guarded espresso start requires the captured machine connection and
 generation, an idle snapshot, an inactive group-head controller, the same
 brewing scale connection, and a non-full gateway. These preconditions are
