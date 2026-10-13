@@ -401,6 +401,73 @@ void _setRemoteGrinderModel(PluginManager manager, String value) {
 }
 
 void main() {
+  test('uses a normalized custom server for uploads', () async {
+    final shot = _shot();
+    final manager = await _loadPlugin('''
+      globalThis.__uploadUrl = null;
+      globalThis.fetch = async (url, init = {}) => {
+        if (url.endsWith('/shots/latest')) {
+          return { ok: true, json: async () => ({ id: 'shot-1' }) };
+        }
+        if (url.endsWith('/shots/shot-1') && (!init.method || init.method === 'GET')) {
+          return { ok: true, json: async () => (${jsonEncode(shot)}) };
+        }
+        if (url === 'https://mock.example/visualizer/api/shots/upload') {
+          globalThis.__uploadUrl = url;
+          return { ok: true, json: async () => ({ id: 'custom-1' }) };
+        }
+        if (url.endsWith('/shots/shot-1') && init.method === 'PUT') {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.endsWith('/shots/custom-1?essentials=1')) {
+          return { ok: true, json: async () => ({ id: 'custom-1', tags: [] }) };
+        }
+        if (url.endsWith('/shots/custom-1') && init.method === 'PATCH') {
+          return { ok: true, json: async () => ({ id: 'custom-1', updated_at: 1 }) };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''', settings: {'ServerUrl': 'https://mock.example/visualizer///'});
+
+    _startAutoUpload(manager);
+    expect(await _waitForJs(manager, 'globalThis.__uploadUrl'),
+        'https://mock.example/visualizer/api/shots/upload');
+  });
+
+  test('rejects invalid server URL without falling back to hosted service', () async {
+    final manager = await _loadPlugin('''
+      globalThis.fetch = async (url, init = {}) => {
+        throw new Error('unexpected request: ' + url);
+      };
+    ''', settings: {'ServerUrl': 'https://mock.example/?token=secret'});
+
+    final status = await _callApi(manager, 'status', {});
+    final body = jsonDecode(status['body'] as String) as Map<String, dynamic>;
+    expect(body['serverUrl'], 'https://visualizer.coffee');
+    expect(body['serverUrlError'], contains('query'));
+  });
+
+  test('account validation uses the selected server', () async {
+    final manager = await _loadPlugin('''
+      globalThis.__accountUrl = null;
+      globalThis.fetch = async (url, init = {}) => {
+        if (url === 'https://mock.example/visualizer/api/me') {
+          globalThis.__accountUrl = url;
+          return { ok: true, json: async () => ({ id: 'user-1' }) };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''', settings: {'ServerUrl': 'https://mock.example/visualizer'});
+
+    final result = await _callApi(manager, 'verifyCredentials', {
+      'username': 'user',
+      'password': 'password',
+    });
+    expect(jsonDecode(result['body'] as String)['valid'], isTrue);
+    expect(await _waitForJs(manager, 'globalThis.__accountUrl'),
+        'https://mock.example/visualizer/api/me');
+  });
+
   test('upload encodes non-zero stage markers', () async {
     final shot = _shot();
     final manager = await _loadPlugin('''

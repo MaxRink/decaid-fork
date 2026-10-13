@@ -496,6 +496,11 @@ field sent as its returned `{ "isSet": true|false }` object preserves the
 stored credential. Secure values are never returned by either endpoint,
 including the POST response.
 
+A plugin manifest may declare `credentialScope` with the name of an ordinary
+setting such as a server URL. Changing that setting clears the plugin's secure
+settings before the next load, preventing credentials from being sent to a
+different account or server.
+
 ### Display
 
 | Method | Path | Description | Handler |

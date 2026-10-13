@@ -336,6 +336,15 @@ The bundled Visualizer plugin merges recipe and shot-review tags, reads the curr
 
 Upload folds the `grinderBurrs` snapshot recorded on the shot into the uploaded `grinder_model` (Visualizer has no separate field for them). Back-sync suppresses only a value that matches the string it uploaded, compared on normalized text, so a genuine remote edit still applies; an applied edit takes ownership of the field, clearing the shot's burrs snapshot so a re-upload does not decorate the edited text again — see `doc/AI_PLUGINS_NOTES.md` for why and how.
 
+The Visualizer plugin's `ServerUrl` setting defaults to `https://visualizer.coffee`
+and accepts an `http` or `https` base URL with an optional reverse-proxy path
+prefix. Uploads, account checks, share-code imports, profile imports and both
+sync directions derive their API paths from that base. Trailing slashes are
+removed; credentials, queries and fragments are rejected. Mapping and sync
+state are stored per normalized server. Changing `ServerUrl` clears secure
+Visualizer credentials through the manifest's `credentialScope`, so credentials
+must be entered again before the new server is contacted.
+
 ### Events from Plugin → Flutter
 
 Plugins can emit custom events that the Flutter app can listen to:
