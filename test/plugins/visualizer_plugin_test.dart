@@ -53,8 +53,9 @@ Map<String, dynamic> _shot({
 Future<PluginManager> _loadPlugin(
   String fetchSource, {
   Map<String, dynamic> settings = const {},
+  FakeKeyValueStoreService? kvStore,
 }) async {
-  final manager = PluginManager(kvStore: FakeKeyValueStoreService());
+  final manager = PluginManager(kvStore: kvStore ?? FakeKeyValueStoreService());
   final setupResult = manager.js.evaluate('''
     globalThis.__testTimers = [];
     globalThis.__nextTimerId = 1;
@@ -1046,13 +1047,15 @@ void main() {
     );
     await firstSync.timeout(const Duration(seconds: 5));
     await manager.unloadPlugin(_manifest.id);
-    final storedOwnership = await manager.kvStore.get(
+    final storedState = await manager.kvStore.get(
       namespace: _manifest.id,
-      key: 'managedLocalTags',
+      key: 'serverState',
     );
-    expect(jsonDecode(storedOwnership as String), {
-      'visualizer-9': ['washed'],
-    });
+    final serverState = jsonDecode(storedState as String) as Map<String, dynamic>;
+    expect(
+      (serverState['https://visualizer.coffee'] as Map)['managedLocalTags'],
+      {'visualizer-9': ['washed']},
+    );
 
     await manager.loadPlugin(
       id: _manifest.id,
@@ -1360,7 +1363,12 @@ void main() {
           jsonDecode(response['body'] as String) as Map<String, dynamic>;
 
       expect(response['status'], 202);
-      expect(body, {'visualizer_id': 'visualizer-1', 'tag_sync_pending': true});
+      expect(body, {
+        'visualizer_id': 'visualizer-1',
+        'serverUrl': 'https://visualizer.coffee',
+        'shotUrl': 'https://visualizer.coffee/shots/visualizer-1',
+        'tag_sync_pending': true,
+      });
 
       final tagPatch =
           await _waitForJs(manager, 'globalThis.__tagPatch')
@@ -1847,6 +1855,98 @@ void main() {
       );
     },
   );
+
+  test('custom server is used for share-code and profile imports', () async {
+    final manager = await _loadPlugin('''
+      globalThis.__importUrls = [];
+      globalThis.fetch = async (url, init = {}) => {
+        if (url === 'https://mock.example/prefix/api/shots/shared?code=1234') {
+          globalThis.__importUrls = [...globalThis.__importUrls, url];
+          return { ok: true, json: async () => ([{ id: 'remote-1' }]) };
+        }
+        if (url === 'https://mock.example/prefix/api/shots/remote-1/profile?format=json') {
+          globalThis.__importUrls = [...globalThis.__importUrls, url];
+          return { ok: true, json: async () => ({ id: 'remote-1', title: 'Test profile' }) };
+        }
+        if (url.endsWith('/api/v1/profiles') && init.method === 'POST') {
+          return { ok: true, json: async () => ({ id: 'local-profile' }) };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''', settings: {'ServerUrl': 'https://mock.example/prefix'});
+
+    final response = await _callApi(manager, 'import', {'shareCode': '1234'});
+    expect(response['status'], 200);
+    expect(await _waitForJs(manager, 'globalThis.__importUrls.length'), 2);
+    expect(
+      _jsBool(manager, 'globalThis.__importUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))'),
+      isTrue,
+    );
+  });
+
+  test('custom server is used for authenticated back-sync', () async {
+    final kvStore = FakeKeyValueStoreService();
+    await kvStore.set(
+      namespace: _manifest.id,
+      key: 'serverState',
+      value: jsonEncode({
+        'https://mock.example/prefix': {
+          'shotMap': {'remote-1': 'local-1'},
+          'backSyncCursor': 100,
+          'backSyncState': {},
+          'uploadedGrinderModels': {},
+          'managedLocalTags': {},
+        },
+      }),
+    );
+    final manager = await _loadPlugin('''
+      globalThis.__backSyncUrls = [];
+      globalThis.fetch = async (url, init = {}) => {
+        if (url === 'https://mock.example/prefix/api/me') {
+          globalThis.__backSyncUrls = [...globalThis.__backSyncUrls, url];
+          return { ok: true, json: async () => ({ id: 'user-1' }) };
+        }
+        if (url.startsWith('https://mock.example/prefix/api/shots?sort=updated_at')) {
+          globalThis.__backSyncUrls = [...globalThis.__backSyncUrls, url];
+          return { ok: true, json: async () => ({ user_id: 'user-1', data: [{ id: 'remote-1', updated_at: 110 }] }) };
+        }
+        if (url === 'https://mock.example/prefix/api/shots/remote-1?essentials=1') {
+          globalThis.__backSyncUrls = [...globalThis.__backSyncUrls, url];
+          return { ok: true, json: async () => ({ id: 'remote-1', updated_at: 110, espresso_enjoyment: '80' }) };
+        }
+        if (url.endsWith('/api/v1/shots/local-1') && init.method === 'GET') {
+          return { ok: true, json: async () => ({ id: 'local-1', annotations: {} }) };
+        }
+        if (url.endsWith('/api/v1/shots/local-1') && init.method === 'PUT') {
+          globalThis.__localBackSync = JSON.parse(init.body);
+          return { ok: true, json: async () => ({}) };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''', settings: {'ServerUrl': 'https://mock.example/prefix', 'BackSync': true}, kvStore: kvStore);
+    await _callApi(manager, 'backSyncNow', const {});
+
+    expect(await _waitForJs(manager, 'globalThis.__localBackSync'), isNotNull);
+    expect(
+      _jsBool(manager, 'globalThis.__backSyncUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))'),
+      isTrue,
+    );
+  });
+
+  test('TLS errors are surfaced without exposing credentials', () async {
+    final manager = await _loadPlugin('''
+      globalThis.fetch = async (url, init = {}) => {
+        throw new Error('CERTIFICATE_VERIFY_FAILED');
+      };
+    ''', settings: {'ServerUrl': 'https://tls.example'});
+
+    final response = await _callApi(manager, 'verifyCredentials', {
+      'username': 'user',
+      'password': 'secret-value',
+    });
+    expect(jsonDecode(response['body'] as String)['valid'], isFalse);
+    expect(response['body'], isNot(contains('secret-value')));
+  });
 
   test('plugin source and manifest versions match', () {
     final sourceVersion = RegExp(
