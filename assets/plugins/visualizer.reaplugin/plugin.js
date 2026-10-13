@@ -476,7 +476,8 @@ function createPlugin(host) {
       state.serverState = safeParseObject(payload.value) || {};
       const key = serverKey(state.serverUrl);
       const known = Object.prototype.hasOwnProperty.call(state.serverState, key);
-      if (!known && (Object.keys(state.serverState).length > 0 || state.serverUrl !== DEFAULT_SERVER_URL)) {
+      if (!known && (Object.keys(state.serverState).length > 0 || state.serverUrl !== DEFAULT_SERVER_URL) &&
+          (!state.username || !state.password)) {
         state.username = null;
         state.password = null;
         state.credentialsBlocked = true;
