@@ -13,9 +13,7 @@ function createPlugin(host) {
   const SHOT_FETCH_DELAY_MS = 5000;
   const NS = "visualizer.reaplugin";
   const LOCAL_API_URL = "http://localhost:8080/api/v1";
-  const VISUALIZER_API_URL = "https://visualizer.coffee/api";
-  const VISUALIZER_SHARED_API = "https://visualizer.coffee/api/shots/shared?code=";
-  const VISUALIZER_PROFILE_API = "https://visualizer.coffee/api/shots/%1/profile?format=json";
+  const DEFAULT_SERVER_URL = "https://visualizer.coffee";
   const CANONICAL_ENJOYMENT_MAX = 10;
   const VISUALIZER_ENJOYMENT_SCALE = 10;
 
@@ -29,6 +27,10 @@ function createPlugin(host) {
     lastCheckedShotId: null,
     username: null,
     password: null,
+    serverUrl: DEFAULT_SERVER_URL,
+    serverState: {},
+    serverStateLoaded: false,
+    credentialsBlocked: false,
     autoUpload: true,
     lengthThreshold: 5,
     lastMachineState: null,
@@ -49,12 +51,98 @@ function createPlugin(host) {
     backSyncStatus: { lastCheck: null, lastResult: null, lastError: null, lastApplied: 0 },
   };
   let managedLocalTagsReadyResolve;
+  let serverStateReadyResolve;
+  const serverStateReady = new Promise((resolve) => {
+    serverStateReadyResolve = resolve;
+  });
   const managedLocalTagsReady = new Promise((resolve) => {
     managedLocalTagsReadyResolve = resolve;
   });
 
   function log(msg) {
     host.log(`[visualizer] ${msg}`);
+  }
+
+  function normalizeServerUrl(value) {
+    const text = String(value == null || value === "" ? DEFAULT_SERVER_URL : value).trim();
+    let parsed;
+    try {
+      parsed = new URL(text);
+    } catch (e) {
+      throw new Error("Visualizer server URL is not a valid URL");
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Visualizer server URL must use http or https");
+    }
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+      throw new Error("Visualizer server URL cannot contain credentials, a query, or a fragment");
+    }
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+  }
+
+  function serverKey(value) {
+    return normalizeServerUrl(value);
+  }
+
+  function visualizerApiUrl(path) {
+    if (state.serverUrlError) throw new Error(state.serverUrlError);
+    return `${state.serverUrl}/api${path}`;
+  }
+
+  function visualizerWebUrl(path) {
+    return `${state.serverUrl}${path}`;
+  }
+
+  function waitForServerState() {
+    return serverStateReady;
+  }
+
+  function activeServerState() {
+    const key = serverKey(state.serverUrl);
+    return state.serverState[key] || {};
+  }
+
+  function applyServerState() {
+    const stored = activeServerState();
+    for (const key of [
+      "lastUploadedShot", "lastVisualizerId", "lastCheckedShotId", "backSyncCursor",
+      "backSyncState", "shotMap", "uploadedGrinderModels", "managedLocalTags",
+    ]) {
+      if (stored[key] != null) state[key] = stored[key];
+    }
+  }
+
+  function captureServerState() {
+    const current = {};
+    for (const key of [
+      "lastUploadedShot", "lastVisualizerId", "lastCheckedShotId", "backSyncCursor",
+      "backSyncState", "shotMap", "uploadedGrinderModels", "managedLocalTags",
+    ]) current[key] = state[key];
+    state.serverState[serverKey(state.serverUrl)] = current;
+  }
+
+  function persistServerState() {
+    captureServerState();
+    host.storage({
+      type: "write",
+      key: "serverState",
+      namespace: NS,
+      data: JSON.stringify(state.serverState),
+    });
+  }
+
+  function connectionError(error) {
+    const message = error?.message || String(error);
+    if (/failed to fetch|network|connection|timeout/i.test(message)) {
+      return `Could not connect to Visualizer at ${state.serverUrl}. Check the server URL and network connection.`;
+    }
+    if (/401|403|credential|password|username|unauthori/i.test(message)) {
+      return `Visualizer rejected the credentials for ${state.serverUrl}. Check the username and password.`;
+    }
+    if (/certificate|tls|ssl/i.test(message)) {
+      return `Visualizer TLS connection to ${state.serverUrl} failed. Check the server certificate.`;
+    }
+    return `${message} (server: ${state.serverUrl})`;
   }
 
   async function fetchShot(shotId) {
@@ -102,9 +190,11 @@ function createPlugin(host) {
   }
   /// FormData and Blob not available in Flutter_JS
   async function uploadShot(shotData, onRetry) {
+    await waitForServerState();
+    if (state.credentialsBlocked) throw new Error("Enter credentials again for the selected Visualizer server");
     const retries = 3;
     const delay = 2000;
-    const url = `${VISUALIZER_API_URL}/shots/upload`;
+    const url = visualizerApiUrl("/shots/upload");
 
     log(`shot duration: ${shotData.duration}`);
     if (shotData.duration < state.lengthThreshold) {
@@ -382,7 +472,24 @@ function createPlugin(host) {
   }
 
   function handleStorageRead(payload) {
-    if (payload.key === "lastUploadedShot") {
+    if (payload.key === "serverState") {
+      state.serverState = safeParseObject(payload.value) || {};
+      const key = serverKey(state.serverUrl);
+      const known = Object.prototype.hasOwnProperty.call(state.serverState, key);
+      if (!known && (Object.keys(state.serverState).length > 0 || state.serverUrl !== DEFAULT_SERVER_URL)) {
+        state.username = null;
+        state.password = null;
+        state.credentialsBlocked = true;
+        log(`Selected Visualizer server ${state.serverUrl} has no saved state; credentials must be entered again`);
+      }
+      applyServerState();
+      state.serverStateLoaded = true;
+      serverStateReadyResolve();
+    } else if (state.serverUrl !== DEFAULT_SERVER_URL) {
+      return;
+    } else if (state.serverStateLoaded && Object.prototype.hasOwnProperty.call(state.serverState, DEFAULT_SERVER_URL)) {
+      return;
+    } else if (payload.key === "lastUploadedShot") {
       state.lastUploadedShot = payload.value;
       log(`Loaded lastUploadedShot from storage: ${payload.value}`);
     } else if (payload.key === "lastVisualizerId") {
@@ -419,8 +526,8 @@ function createPlugin(host) {
   }
 
   async function checkCredentials(body) {
-    log(`checking creds: ${JSON.stringify(body)}`)
-    const url = `${VISUALIZER_API_URL}/me`;
+    await waitForServerState();
+    const url = visualizerApiUrl("/me");
     const headers = {
       'Authorization': getAuthHeader(body)
     };
@@ -433,12 +540,14 @@ function createPlugin(host) {
 
       return response.ok;
     } catch (error) {
-      log('Error checking Visualizer credentials:', error);
+      log(`Error checking Visualizer credentials at ${state.serverUrl}: ${connectionError(error)}`);
       return false;
     }
   }
 
   async function importFromShareCode(shareCode) {
+    await waitForServerState();
+    if (state.credentialsBlocked) throw new Error("Enter credentials again for the selected Visualizer server");
     const code = shareCode.trim();
 
     if (!code) {
@@ -448,7 +557,7 @@ function createPlugin(host) {
     log(`Importing profile from share code: ${code}`);
 
     // Step 1: Fetch shot metadata from share code
-    const sharedUrl = `${VISUALIZER_SHARED_API}${code}`;
+    const sharedUrl = `${visualizerApiUrl("/shots/shared")}?code=${encodeURIComponent(code)}`;
     log(`Fetching from: ${sharedUrl}`);
 
     const sharedResponse = await fetch(sharedUrl, {
@@ -488,7 +597,7 @@ function createPlugin(host) {
     log(`Got shot ID: ${shotId}, fetching profile...`);
 
     // Step 2: Fetch profile data using shot ID
-    const profileUrl = VISUALIZER_PROFILE_API.replace('%1', shotId);
+    const profileUrl = visualizerApiUrl(`/shots/${encodeURIComponent(shotId)}/profile?format=json`);
     log(`Fetching profile from: ${profileUrl}`);
 
     const profileResponse = await fetch(profileUrl, {
@@ -553,11 +662,7 @@ function createPlugin(host) {
   }
 
   function persistBackSyncState() {
-    host.storage({ type: "write", key: "shotMap", namespace: NS, data: JSON.stringify(state.shotMap) });
-    host.storage({ type: "write", key: "uploadedGrinderModels", namespace: NS, data: JSON.stringify(state.uploadedGrinderModels) });
-    host.storage({ type: "write", key: "backSyncCursor", namespace: NS, data: String(state.backSyncCursor) });
-    host.storage({ type: "write", key: "backSyncState", namespace: NS, data: JSON.stringify(state.backSyncState) });
-    host.storage({ type: "write", key: "managedLocalTags", namespace: NS, data: JSON.stringify(state.managedLocalTags) });
+    persistServerState();
   }
 
   function localShotVisualizerId(shot) {
@@ -639,8 +744,7 @@ function createPlugin(host) {
   function rememberSuccessfulUpload(localId, visualizerId, uploadedGrinderModel) {
     state.lastUploadedShot = localId;
     state.lastVisualizerId = visualizerId;
-    host.storage({ type: "write", key: "lastUploadedShot", namespace: NS, data: localId });
-    host.storage({ type: "write", key: "lastVisualizerId", namespace: NS, data: visualizerId });
+    persistServerState();
     rememberUpload(localId, visualizerId, uploadedGrinderModel);
   }
 
@@ -661,7 +765,9 @@ function createPlugin(host) {
   }
 
   async function visualizerGet(path) {
-    const res = await fetch(`${VISUALIZER_API_URL}${path}`, {
+    await waitForServerState();
+    if (state.credentialsBlocked) throw new Error("Enter credentials again for the selected Visualizer server");
+    const res = await fetch(visualizerApiUrl(path), {
       method: "GET",
       headers: { "Authorization": getAuthHeader(), "Content-Type": "application/json" },
     });
@@ -670,7 +776,9 @@ function createPlugin(host) {
   }
 
   async function visualizerPatch(path, body) {
-    const res = await fetch(`${VISUALIZER_API_URL}${path}`, {
+    await waitForServerState();
+    if (state.credentialsBlocked) throw new Error("Enter credentials again for the selected Visualizer server");
+    const res = await fetch(visualizerApiUrl(path), {
       method: "PATCH",
       headers: {
         "Authorization": getAuthHeader(),
@@ -990,7 +1098,9 @@ function createPlugin(host) {
   // never hit /api/shots unauthenticated (which would return the public feed).
   async function verifyCredentials() {
     try {
-      const res = await fetch(`${VISUALIZER_API_URL}/me`, {
+      await waitForServerState();
+      if (state.credentialsBlocked) return null;
+      const res = await fetch(visualizerApiUrl("/me"), {
         method: "GET",
         headers: { "Authorization": getAuthHeader() },
       });
@@ -1277,9 +1387,15 @@ function createPlugin(host) {
   // Return the plugin object
   return {
     id: "visualizer.reaplugin",
-    version: "1.5.11",
+    version: "1.6.0",
 
     onLoad(settings) {
+      try {
+        state.serverUrl = normalizeServerUrl(settings.ServerUrl);
+      } catch (e) {
+        state.serverUrl = DEFAULT_SERVER_URL;
+        state.serverUrlError = e.message;
+      }
       state.username = settings.Username;
       state.password = settings.Password;
       state.autoUpload = settings.AutoUpload != undefined ? settings.AutoUpload : true;
@@ -1287,7 +1403,7 @@ function createPlugin(host) {
       state.backSyncEnabled = settings.BackSync === true;
       state.backSyncIntervalSeconds = settings.BackSyncIntervalSeconds != undefined ? settings.BackSyncIntervalSeconds : 300;
 
-      log(`Loaded with username: ${state.username ? 'configured' : 'not configured'}, back-sync ${state.backSyncEnabled ? 'on' : 'off'}`);
+      log(`Loaded Visualizer server ${state.serverUrl}; username ${state.username ? 'configured' : 'not configured'}, back-sync ${state.backSyncEnabled ? 'on' : 'off'}`);
 
       // Load saved state from storage
       host.storage({ type: "read", key: "lastUploadedShot", namespace: NS });
@@ -1297,6 +1413,7 @@ function createPlugin(host) {
       host.storage({ type: "read", key: "backSyncCursor", namespace: NS });
       host.storage({ type: "read", key: "backSyncState", namespace: NS });
       host.storage({ type: "read", key: "managedLocalTags", namespace: NS });
+      host.storage({ type: "read", key: "serverState", namespace: NS });
 
       // First run ~30s after load so storage reads have settled.
       if (state.backSyncEnabled) armBackSync(30000);
@@ -1332,6 +1449,14 @@ function createPlugin(host) {
           data: state.lastVisualizerId
         });
       }
+
+      captureServerState();
+      host.storage({
+        type: "write",
+        key: "serverState",
+        namespace: NS,
+        data: JSON.stringify(state.serverState),
+      });
     },
 
     // HTTP request handler (optional - can also handle via onEvent)
@@ -1348,6 +1473,8 @@ function createPlugin(host) {
           },
           body: JSON.stringify({
             status: "online",
+            serverUrl: state.serverUrl,
+            serverUrlError: state.serverUrlError || null,
             timestamp: Date.now(),
           })
         };
@@ -1411,7 +1538,6 @@ function createPlugin(host) {
       }
 
       if (request.endpoint === "verifyCredentials") {
-        log(`verifying ${JSON.stringify(request.body)}`)
         return checkCredentials(request.body).then((verified) => {
           return {
             status: 200,
@@ -1432,6 +1558,7 @@ function createPlugin(host) {
           body: JSON.stringify({
             reaId: state.lastUploadedShot,
             visId: state.lastVisualizerId,
+            serverUrl: state.serverUrl,
           })
         };
       }

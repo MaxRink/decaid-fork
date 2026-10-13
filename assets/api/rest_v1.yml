@@ -7780,6 +7780,11 @@ components:
               label: Minimum shot length
               description: Only upload shots longer than this many seconds (skips flushes)
               default: 5
+        credentialScope:
+          type: string
+          description: >
+            Optional setting key whose changes invalidate secure plugin settings.
+            Plugins use this to bind credentials to a selected server or account.
         api:
           type: array
           description: A list of endpoints this plugin will expose
