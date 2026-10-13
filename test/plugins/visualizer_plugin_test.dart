@@ -433,6 +433,13 @@ void main() {
     _startAutoUpload(manager);
     expect(await _waitForJs(manager, 'globalThis.__uploadUrl'),
         'https://mock.example/visualizer/api/shots/upload');
+
+    final manual = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    expect(manual['status'], 202);
+    expect(
+      await _waitForJs(manager, 'globalThis.__uploadUrl'),
+      'https://mock.example/visualizer/api/shots/upload',
+    );
   });
 
   test('rejects invalid server URL without falling back to hosted service', () async {
