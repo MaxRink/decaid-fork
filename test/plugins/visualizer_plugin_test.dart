@@ -404,14 +404,15 @@ void _setRemoteGrinderModel(PluginManager manager, String value) {
 void main() {
   test('uses a normalized custom server for uploads', () async {
     final shot = _shot();
-    final manager = await _loadPlugin('''
+    final manager = await _loadPlugin(
+      '''
       globalThis.__uploadUrl = null;
       globalThis.fetch = async (url, init = {}) => {
         if (url.endsWith('/shots/latest')) {
           return { ok: true, json: async () => ({ id: 'shot-1' }) };
         }
         if (url.endsWith('/shots/shot-1') && (!init.method || init.method === 'GET')) {
-          return { ok: true, json: async () => (${jsonEncode(shot)}) };
+          return { ok: true, json: async () => (${jsonEncode(shot)}), text: async () => JSON.stringify(${jsonEncode(shot)}) };
         }
         if (url === 'https://mock.example/visualizer/api/shots/upload') {
           globalThis.__uploadUrl = url;
@@ -428,11 +429,15 @@ void main() {
         }
         throw new Error('Unexpected URL: ' + url);
       };
-    ''', settings: {'ServerUrl': 'https://mock.example/visualizer///'});
+    ''',
+      settings: {'ServerUrl': 'https://mock.example/visualizer///'},
+    );
 
     _startAutoUpload(manager);
-    expect(await _waitForJs(manager, 'globalThis.__uploadUrl'),
-        'https://mock.example/visualizer/api/shots/upload');
+    expect(
+      await _waitForJs(manager, 'globalThis.__uploadUrl'),
+      'https://mock.example/visualizer/api/shots/upload',
+    );
 
     final manual = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
     expect(manual['status'], 202);
@@ -442,21 +447,28 @@ void main() {
     );
   });
 
-  test('rejects invalid server URL without falling back to hosted service', () async {
-    final manager = await _loadPlugin('''
+  test(
+    'rejects invalid server URL without falling back to hosted service',
+    () async {
+      final manager = await _loadPlugin(
+        '''
       globalThis.fetch = async (url, init = {}) => {
         throw new Error('unexpected request: ' + url);
       };
-    ''', settings: {'ServerUrl': 'https://mock.example/?token=secret'});
+    ''',
+        settings: {'ServerUrl': 'https://mock.example/?token=secret'},
+      );
 
-    final status = await _callApi(manager, 'status', {});
-    final body = jsonDecode(status['body'] as String) as Map<String, dynamic>;
-    expect(body['serverUrl'], 'https://visualizer.coffee');
-    expect(body['serverUrlError'], contains('query'));
-  });
+      final status = await _callApi(manager, 'status', {});
+      final body = jsonDecode(status['body'] as String) as Map<String, dynamic>;
+      expect(body['serverUrl'], 'https://visualizer.coffee');
+      expect(body['serverUrlError'], contains('query'));
+    },
+  );
 
   test('account validation uses the selected server', () async {
-    final manager = await _loadPlugin('''
+    final manager = await _loadPlugin(
+      '''
       globalThis.__accountUrl = null;
       globalThis.fetch = async (url, init = {}) => {
         if (url === 'https://mock.example/visualizer/api/me') {
@@ -465,16 +477,62 @@ void main() {
         }
         throw new Error('Unexpected URL: ' + url);
       };
-    ''', settings: {'ServerUrl': 'https://mock.example/visualizer'});
+    ''',
+      settings: {'ServerUrl': 'https://mock.example/visualizer'},
+    );
 
     final result = await _callApi(manager, 'verifyCredentials', {
       'username': 'user',
       'password': 'password',
     });
     expect(jsonDecode(result['body'] as String)['valid'], isTrue);
-    expect(await _waitForJs(manager, 'globalThis.__accountUrl'),
-        'https://mock.example/visualizer/api/me');
+    expect(
+      await _waitForJs(manager, 'globalThis.__accountUrl'),
+      'https://mock.example/visualizer/api/me',
+    );
   });
+
+  test(
+    'preview credentials are explicit and do not change the selected server',
+    () async {
+      final manager = await _loadPlugin(
+        '''
+      globalThis.__previewRequests = [];
+      globalThis.fetch = async (url, init = {}) => {
+        globalThis.__previewRequests.push({url, auth: init.headers.Authorization});
+        return {ok: true, status: 200};
+      };
+    ''',
+        settings: {'ServerUrl': 'https://selected.example'},
+      );
+      final missing = await _callApi(manager, 'verifyCredentials', {
+        'serverUrl': 'https://preview.example',
+      });
+      expect(missing['status'], 400);
+      expect(
+        _jsBool(manager, 'globalThis.__previewRequests.length === 0'),
+        isTrue,
+      );
+      final preview = await _callApi(manager, 'verifyCredentials', {
+        'serverUrl': 'https://preview.example/prefix/',
+        'username': 'preview-user',
+        'password': 'preview-password',
+      });
+      expect(jsonDecode(preview['body'] as String)['valid'], isTrue);
+      expect(
+        _jsBool(
+          manager,
+          'globalThis.__previewRequests[0].url === "https://preview.example/prefix/api/me" && globalThis.__previewRequests[0].auth === "Basic " + btoa("preview-user:preview-password")',
+        ),
+        isTrue,
+      );
+      final status = await _callApi(manager, 'status', {});
+      expect(
+        jsonDecode(status['body'] as String)['serverUrl'],
+        'https://selected.example',
+      );
+    },
+  );
 
   test('upload encodes non-zero stage markers', () async {
     final shot = _shot();
@@ -1058,10 +1116,13 @@ void main() {
       namespace: _manifest.id,
       key: 'serverState',
     );
-    final serverState = jsonDecode(storedState as String) as Map<String, dynamic>;
+    final serverState =
+        jsonDecode(storedState as String) as Map<String, dynamic>;
     expect(
       (serverState['https://visualizer.coffee'] as Map)['managedLocalTags'],
-      {'visualizer-9': ['washed']},
+      {
+        'visualizer-9': ['washed'],
+      },
     );
 
     await manager.loadPlugin(
@@ -1864,7 +1925,8 @@ void main() {
   );
 
   test('custom server is used for share-code and profile imports', () async {
-    final manager = await _loadPlugin('''
+    final manager = await _loadPlugin(
+      '''
       globalThis.__importUrls = [];
       globalThis.fetch = async (url, init = {}) => {
         if (url === 'https://mock.example/prefix/api/shots/shared?code=1234') {
@@ -1880,13 +1942,18 @@ void main() {
         }
         throw new Error('Unexpected URL: ' + url);
       };
-    ''', settings: {'ServerUrl': 'https://mock.example/prefix'});
+    ''',
+      settings: {'ServerUrl': 'https://mock.example/prefix'},
+    );
 
     final response = await _callApi(manager, 'import', {'shareCode': '1234'});
     expect(response['status'], 200);
     expect(await _waitForJs(manager, 'globalThis.__importUrls.length'), 2);
     expect(
-      _jsBool(manager, 'globalThis.__importUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))'),
+      _jsBool(
+        manager,
+        'globalThis.__importUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))',
+      ),
       isTrue,
     );
   });
@@ -1906,7 +1973,8 @@ void main() {
         },
       }),
     );
-    final manager = await _loadPlugin('''
+    final manager = await _loadPlugin(
+      '''
       globalThis.__backSyncUrls = [];
       globalThis.fetch = async (url, init = {}) => {
         if (url === 'https://mock.example/prefix/api/me') {
@@ -1920,6 +1988,13 @@ void main() {
         if (url === 'https://mock.example/prefix/api/shots/remote-1?essentials=1') {
           globalThis.__backSyncUrls = [...globalThis.__backSyncUrls, url];
           return { ok: true, json: async () => ({ id: 'remote-1', updated_at: 110, espresso_enjoyment: '80' }) };
+        }
+        if (url.includes('/api/v1/shots?')) {
+          return { ok: true, json: async () => ({ items: [{
+            id: 'local-1', annotations: { extras: {
+              visualizerId: 'remote-1', visualizerServerUrl: 'https://mock.example/prefix',
+            } },
+          }], total: 1 }) };
         }
         if (url.endsWith('/api/v1/shots/local-1') && init.method === 'GET') {
           return {
@@ -1939,22 +2014,31 @@ void main() {
         }
         throw new Error('Unexpected URL: ' + url);
       };
-    ''', settings: {'ServerUrl': 'https://mock.example/prefix', 'BackSync': true}, kvStore: kvStore);
+    ''',
+      settings: {'ServerUrl': 'https://mock.example/prefix', 'BackSync': true},
+      kvStore: kvStore,
+    );
     await _callApi(manager, 'backSyncNow', const {});
 
     expect(await _waitForJs(manager, 'globalThis.__localBackSync'), isNotNull);
     expect(
-      _jsBool(manager, 'globalThis.__backSyncUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))'),
+      _jsBool(
+        manager,
+        'globalThis.__backSyncUrls.every((url) => url.startsWith("https://mock.example/prefix/api/"))',
+      ),
       isTrue,
     );
   });
 
   test('TLS errors are surfaced without exposing credentials', () async {
-    final manager = await _loadPlugin('''
+    final manager = await _loadPlugin(
+      '''
       globalThis.fetch = async (url, init = {}) => {
         throw new Error('CERTIFICATE_VERIFY_FAILED');
       };
-    ''', settings: {'ServerUrl': 'https://tls.example'});
+    ''',
+      settings: {'ServerUrl': 'https://tls.example'},
+    );
 
     final response = await _callApi(manager, 'verifyCredentials', {
       'username': 'user',
@@ -1973,12 +2057,15 @@ void main() {
       kvStore: kvStore,
     );
     _startAutoUpload(managerA);
-    await _waitForJs(managerA, 'globalThis.__upload');
+    await _waitForJs(managerA, 'globalThis.__uploadStamp');
     await managerA.unloadPlugin(_manifest.id);
 
-    final persistedAfterA = jsonDecode(
-      await kvStore.get(namespace: _manifest.id, key: 'serverState') as String,
-    ) as Map<String, dynamic>;
+    final persistedAfterA =
+        jsonDecode(
+              await kvStore.get(namespace: _manifest.id, key: 'serverState')
+                  as String,
+            )
+            as Map<String, dynamic>;
     expect(persistedAfterA['https://server-a.example'], isNotNull);
 
     final managerB = await _loadPlugin(

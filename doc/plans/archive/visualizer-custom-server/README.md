@@ -1,5 +1,7 @@
 # Custom Visualizer server
 
-Issue #975 adds support for using a self-hosted Visualizer instance from the bundled plugin. The plugin keeps the hosted service as the default, derives every Visualizer endpoint from one validated base URL, and persists mappings and sync cursors per normalized server. A server change waits for persisted state to load before making a request; credentials are cleared for a previously unseen server so a saved password cannot be sent to the wrong host.
+Issue #975 keeps hosted Visualizer as the default and derives uploads, imports and metadata sync from one normalized HTTP(S) base URL. Reverse-proxy path prefixes are retained. Credentials, query strings, fragments and dot path segments in a base URL are rejected.
 
-The setting accepts only `http` and `https` URLs without query, fragment, username, or password. A path prefix is retained and trailing slashes are removed, allowing reverse proxies such as `https://coffee.example/visualizer`. The plugin reports the active server in status and returns actionable connection errors without including credentials.
+Credentials are held in the host's existing secure store and bound to the selected URL. Changing servers clears them; the owner enters credentials for the new server. Existing unscoped IDs belong only to the hosted service. Mapping and sync state are saved per server, and new shot annotations record the server beside the remote ID. Storage reads settle before scoped state is used; an early unload does not overwrite it.
+
+Authenticated requests reject redirects before contacting their target. This small fetch option is needed for the credential boundary; per-request cancellation remains separate work in #981. Platform TLS validation remains enabled. Plain HTTP is available for explicitly configured local servers and has no transport encryption.
