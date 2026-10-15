@@ -1415,7 +1415,7 @@ void main() {
               ok: false,
               status: 400,
               statusText: 'Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA==',
-              json: async () => { throw new Error('malformed body echoed Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=='); },
+              text: async () => '{"error":"Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=="}',
             });
           });
         }
@@ -1457,6 +1457,24 @@ void main() {
       expect(event['payload']['error'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
     },
   );
+
+  test('malformed remote JSON does not expose response text', () async {
+    final manager = await _loadPlugin('''
+      globalThis.fetch = async (url, init = {}) => {
+        if (url.endsWith('/shots/shot-1') && (!init.method || init.method === 'GET')) {
+          return { ok: true, json: async () => (${jsonEncode(_shot())}), text: async () => JSON.stringify(${jsonEncode(_shot())}) };
+        }
+        if (url.endsWith('/shots/upload')) {
+          return { ok: true, json: async () => { throw new Error('malformed body echoed Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=='); } };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''');
+    final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    expect(response['status'], 502);
+    expect(response['body'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
+    expect(response['body'], isNot(contains('malformed body echoed')));
+  });
 
   test(
     'upload scales annotations.enjoyment to Visualizer espresso_enjoyment',
