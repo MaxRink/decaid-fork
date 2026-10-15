@@ -49,6 +49,23 @@ Decaid plugins are JavaScript modules that extend the functionality of Decaid.
 Plugins run in a sandboxed JavaScript environment and can react to machine events,
 store data, make HTTP requests, and emit events through the Decaid API.
 
+## External device plugins
+
+Concrete device integrations are maintained separately from the Decaid runtime
+and target the current `main` API baseline:
+
+- [Skale plugin](https://github.com/MaxRink/decaid-skale-plugin): opt-in Scale
+  integration. Skale machine actions remain held for the #845/#853 human review
+  decision; the repository does not make those actions part of the host contract.
+- [E64 WebSocket plugin](https://github.com/MaxRink/decaid-e64ws-plugin): opt-in
+  read-only `type: "grinder"` integration over the host network transport. It
+  must not bypass TLS trust or expose motor, calibration, or configuration-write
+  commands.
+
+These repositories are consumer plugins, not bundled runtime features. Validate
+their manifest and API compatibility against the Decaid `main` revision before
+installing or reviewing a change.
+
 ## Plugin Structure
 
 A Decaid plugin consists of two required files:
@@ -1015,6 +1032,22 @@ up to 4 active physical bindings per plugin generation. Definitions and Sensor p
 retain the 64 KiB JSON limit. Bridge failures carry `code`, including
 `stale_session`, `permission_denied`, `resource_limit`, `attribute_unavailable`,
 `link_lost`, and `timeout`; other native BLE codes are preserved.
+
+Each `create` call must return independent state for one physical device,
+including timers, subscriptions, pending reads, and command state. Asynchronous
+callbacks retain that connection's context; they must not switch to a replacement
+session's context when an old operation completes. Retiring one binding cancels
+only its own timers and subscriptions. Plugin unload retires all bindings owned
+by that generation without affecting other plugins.
+
+Test zero, one, and four active BLE bindings under the production quota, then
+rejection of a fifth without disturbing the four live bindings. A fixture that
+expects the second binding to fail must explicitly use
+`PluginBleRegistry(activeBindingLimit: 1)`. Also verify independent physical
+identities and state, disconnect/reconnect, stale callbacks and command results,
+permission revocation, sibling-binding isolation, and whole-plugin unload.
+Deterministic fake GATT tests establish host and protocol behavior; report real
+hardware validation separately.
 
 BLE Scale bindings reuse the Scale adapter and declared capability checks. The
 opt-in Felicita Arc and Bookoo examples exercise BLE Scale bindings with fake GATT.
