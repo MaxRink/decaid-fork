@@ -1454,7 +1454,10 @@ void main() {
       final event = await errorEvent.timeout(const Duration(seconds: 5));
       expect(event['payload']['error'], contains('Visualizer Premium'));
       expect(event['payload']['error'], contains('HTTP 400'));
-      expect(event['payload']['error'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
+      expect(
+        event['payload']['error'],
+        isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')),
+      );
     },
   );
 
@@ -1470,7 +1473,13 @@ void main() {
         throw new Error('Unexpected URL: ' + url);
       };
     ''');
-    final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    final responseFuture = _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    for (var i = 0; i < 3; i++) {
+      manager.js.evaluate('globalThis.__runTimers(2000)');
+      while (manager.js.executePendingJob() > 0) {}
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    final response = await responseFuture;
     expect(response['status'], 502);
     expect(response['body'], contains('invalid JSON response'));
     expect(response['body'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
@@ -2068,20 +2077,29 @@ void main() {
     expect(response['body'], isNot(contains('secret-value')));
   });
 
-  test('credential verification never returns a candidate secret from a remote error', () async {
-    final manager = await _loadPlugin('''
+  test(
+    'credential verification never returns a candidate secret from a remote error',
+    () async {
+      final manager = await _loadPlugin(
+        '''
       globalThis.fetch = async () => {
         throw new Error('transport echoed candidate-password Basic Y2FuZGlkYXRlLXVzZXI6Y2FuZGlkYXRlLXBhc3N3b3Jk');
       };
-    ''', settings: {'ServerUrl': 'https://verify.example'});
+    ''',
+        settings: {'ServerUrl': 'https://verify.example'},
+      );
 
-    final response = await _callApi(manager, 'verifyCredentials', {
-      'username': 'candidate-user',
-      'password': 'candidate-password',
-    });
-    expect(response['body'], isNot(contains('candidate-password')));
-    expect(response['body'], isNot(contains('Y2FuZGlkYXRlLXVzZXI6Y2FuZGlkYXRlLXBhc3N3b3Jk')));
-  });
+      final response = await _callApi(manager, 'verifyCredentials', {
+        'username': 'candidate-user',
+        'password': 'candidate-password',
+      });
+      expect(response['body'], isNot(contains('candidate-password')));
+      expect(
+        response['body'],
+        isNot(contains('Y2FuZGlkYXRlLXVzZXI6Y2FuZGlkYXRlLXBhc3N3b3Jk')),
+      );
+    },
+  );
 
   test('upload errors do not expose an untrusted response body', () async {
     final manager = await _loadPlugin('''
@@ -2098,9 +2116,18 @@ void main() {
       };
     ''');
 
-    final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    final responseFuture = _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    for (var i = 0; i < 3; i++) {
+      manager.js.evaluate('globalThis.__runTimers(2000)');
+      while (manager.js.executePendingJob() > 0) {}
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    final response = await responseFuture;
     expect(response['status'], 502);
-    expect(await _waitForJs(manager, 'globalThis.__uploadAttempts'), greaterThan(0));
+    expect(
+      await _waitForJs(manager, 'globalThis.__uploadAttempts'),
+      greaterThan(0),
+    );
     expect(response['body'], isNot(contains('remote echoed shot-secret')));
   });
 
