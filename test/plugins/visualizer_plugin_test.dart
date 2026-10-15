@@ -2048,6 +2048,40 @@ void main() {
     expect(response['body'], isNot(contains('secret-value')));
   });
 
+  test('credential verification never returns a candidate secret from a remote error', () async {
+    final manager = await _loadPlugin('''
+      globalThis.fetch = async () => ({
+        ok: false,
+        status: 500,
+        text: async () => 'upstream echoed candidate-password',
+      });
+    ''', settings: {'ServerUrl': 'https://verify.example'});
+
+    final response = await _callApi(manager, 'verifyCredentials', {
+      'username': 'candidate-user',
+      'password': 'candidate-password',
+    });
+    expect(response['body'], isNot(contains('candidate-password')));
+  });
+
+  test('upload errors do not expose an untrusted response body', () async {
+    final manager = await _loadPlugin('''
+      globalThis.fetch = async (url, init = {}) => {
+        if (url.endsWith('/shots/shot-1') && (!init.method || init.method === 'GET')) {
+          return { ok: true, json: async () => (${jsonEncode(_shot())}) };
+        }
+        if (url.endsWith('/shots/upload')) {
+          return { ok: false, status: 500, text: async () => 'remote echoed shot-secret' };
+        }
+        throw new Error('Unexpected URL: ' + url);
+      };
+    ''');
+
+    final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
+    expect(response['status'], 502);
+    expect(response['body'], isNot(contains('remote echoed shot-secret')));
+  });
+
   test('scopes persisted upload mappings by server across A-B-A reloads', () async {
     final kvStore = FakeKeyValueStoreService();
     final shot = _shot();
