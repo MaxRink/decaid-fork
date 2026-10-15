@@ -1415,7 +1415,7 @@ void main() {
               ok: false,
               status: 400,
               statusText: 'Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA==',
-              text: async () => '{"error":"Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=="}',
+              json: async () => { throw new Error('malformed body echoed Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=='); },
             });
           });
         }
