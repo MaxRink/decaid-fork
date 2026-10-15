@@ -191,7 +191,9 @@ function createPlugin() {
           }
           final prefs = await SharedPreferences.getInstance();
           final key = 'plugin.settings.credential-scope.$pluginId';
-          return scope == null ? prefs.remove(key) : prefs.setString(key, scope);
+          return scope == null
+              ? prefs.remove(key)
+              : prefs.setString(key, scope);
         },
       );
       await service.initialize();
@@ -491,13 +493,19 @@ function createPlugin() {
           id,
           credentialScope: 'ServerUrl',
           settings: {
-            'ServerUrl': {'type': 'string', 'default': 'https://server-a.example'},
+            'ServerUrl': {
+              'type': 'string',
+              'default': 'https://server-a.example',
+            },
             'Username': {'type': 'string'},
             'Password': {'type': 'string', 'secure': true},
           },
         ).path,
       );
-      await service.savePluginSettings(id, {'Username': 'user-a', 'Password': 'secret-a'});
+      await service.savePluginSettings(id, {
+        'Username': 'user-a',
+        'Password': 'secret-a',
+      });
       failNextCredentialScopeWrite = true;
       await expectLater(
         service.savePluginSettings(id, {
@@ -514,22 +522,31 @@ function createPlugin() {
         'Password': {'isSet': false},
       });
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('plugin.settings.credential-scope.$id'), 'https://server-a.example');
+      expect(
+        prefs.getString('plugin.settings.credential-scope.$id'),
+        'https://server-a.example',
+      );
       final fresh = PluginLoaderService(
         kvStore: kvStore,
         credentialStore: credentialStore,
         credentialScopeWriter: (pluginId, scope) async {
           final freshPrefs = await SharedPreferences.getInstance();
           final key = 'plugin.settings.credential-scope.$pluginId';
-          return scope == null ? freshPrefs.remove(key) : freshPrefs.setString(key, scope);
+          return scope == null
+              ? freshPrefs.remove(key)
+              : freshPrefs.setString(key, scope);
         },
       );
       await fresh.initialize();
       expect(await fresh.pluginSettings(id), {
-        'ServerUrl': 'https://server-a.example',
         'Username': 'user-a',
         'Password': {'isSet': false},
       });
+      final freshPrefs = await SharedPreferences.getInstance();
+      expect(
+        freshPrefs.getString('plugin.settings.credential-scope.$id'),
+        'https://server-a.example',
+      );
       await fresh.dispose();
     });
 
