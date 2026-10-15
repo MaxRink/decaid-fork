@@ -176,7 +176,7 @@ function createPlugin(host) {
         : "http://localhost:8080/api/v1/shots/latest";
       const res = await fetch(url);
       if (!res.ok) {
-        log(`Failed to fetch shot: ${res.status} ${res.statusText}`);
+        log(`Failed to fetch shot: HTTP ${res.status}`);
         return null;
       }
       return await res.json();
@@ -566,7 +566,7 @@ function createPlugin(host) {
       if (statusCode === 401) {
         throw new Error("Invalid Visualizer credentials");
       }
-      throw new Error(`Failed to fetch share code: HTTP ${statusCode} ${sharedResponse.statusText}`);
+      throw new Error(`Failed to fetch share code: HTTP ${statusCode}`);
     }
 
     const sharedData = await sharedResponse.json();
@@ -606,7 +606,7 @@ function createPlugin(host) {
       if (statusCode === 401) {
         throw new Error("Invalid Visualizer credentials");
       }
-      throw new Error(`Failed to fetch profile: HTTP ${statusCode} ${profileResponse.statusText}`);
+      throw new Error(`Failed to fetch profile: HTTP ${statusCode}`);
     }
 
     const profileData = await profileResponse.json();
@@ -626,7 +626,7 @@ function createPlugin(host) {
     });
 
     if (!workflowResponse.ok) {
-      throw new Error(`Failed to import profile to Decent: HTTP ${workflowResponse.status} ${workflowResponse.statusText}`);
+      throw new Error(`Failed to import profile to Decent: HTTP ${workflowResponse.status}`);
     }
 
     const workflowResult = await workflowResponse.json();
@@ -722,7 +722,7 @@ function createPlugin(host) {
       body: JSON.stringify(update),
     })
       .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
       })
       .catch((e) => {
         consumeLocalSyncSuppression(localId, update);
@@ -769,7 +769,7 @@ function createPlugin(host) {
       method: "GET",
       headers: { "Authorization": getAuthHeader(), "Content-Type": "application/json" },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   }
 
@@ -786,11 +786,10 @@ function createPlugin(host) {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const text = await res.text();
       if ((res.status === 400 || res.status === 403) && hasOwn(body?.shot, "tag_list")) {
-        throw new Error(`Visualizer tag sync requires Visualizer Premium. HTTP ${res.status}: ${text || res.statusText}`);
+        throw new Error(`Visualizer tag sync requires Visualizer Premium. HTTP ${res.status}`);
       }
-      throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+      throw new Error(`HTTP ${res.status}`);
     }
     return await res.json();
   }

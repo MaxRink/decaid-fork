@@ -1414,8 +1414,8 @@ void main() {
             globalThis.__failTagSync = () => resolve({
               ok: false,
               status: 400,
-              statusText: 'Bad Request',
-              text: async () => '{"error":"param is missing or the value is empty or invalid: shot"}',
+              statusText: 'Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA==',
+              text: async () => '{"error":"Authorization: Basic c2Vuc2l0aXZlLXNlY3JldA=="}',
             });
           });
         }
@@ -1454,6 +1454,7 @@ void main() {
       final event = await errorEvent.timeout(const Duration(seconds: 5));
       expect(event['payload']['error'], contains('Visualizer Premium'));
       expect(event['payload']['error'], contains('HTTP 400'));
+      expect(event['payload']['error'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
     },
   );
 
