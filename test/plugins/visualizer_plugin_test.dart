@@ -1472,6 +1472,7 @@ void main() {
     ''');
     final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
     expect(response['status'], 502);
+    expect(response['body'], contains('invalid JSON response'));
     expect(response['body'], isNot(contains('c2Vuc2l0aXZlLXNlY3JldA==')));
     expect(response['body'], isNot(contains('malformed body echoed')));
   });
