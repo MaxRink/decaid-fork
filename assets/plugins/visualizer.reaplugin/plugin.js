@@ -169,6 +169,14 @@ function createPlugin(host) {
     }
   }
 
+  async function remoteJson(response) {
+    try {
+      return await response.json();
+    } catch (_) {
+      throw new Error("Visualizer returned an invalid JSON response.");
+    }
+  }
+
   async function fetchShot(shotId) {
     try {
       const url = shotId
@@ -179,7 +187,7 @@ function createPlugin(host) {
         log(`Failed to fetch shot: HTTP ${res.status}`);
         return null;
       }
-      return await res.json();
+      return await remoteJson(res);
     } catch (e) {
       log(`Error fetching shot: ${e.message}`);
       return null;
@@ -246,7 +254,7 @@ function createPlugin(host) {
         });
 
         if (response.ok) {
-          return await response.json();
+          return await remoteJson(response);
         }
 
         // Do not copy an untrusted response body into logs or the host response.
@@ -569,7 +577,7 @@ function createPlugin(host) {
       throw new Error(`Failed to fetch share code: HTTP ${statusCode}`);
     }
 
-    const sharedData = await sharedResponse.json();
+    const sharedData = await remoteJson(sharedResponse);
     log(`Share code response: ${JSON.stringify(sharedData).slice(0, 200)}`);
 
     // Handle both array and object responses
@@ -609,7 +617,7 @@ function createPlugin(host) {
       throw new Error(`Failed to fetch profile: HTTP ${statusCode}`);
     }
 
-    const profileData = await profileResponse.json();
+    const profileData = await remoteJson(profileResponse);
     log(`Fetched profile: ${JSON.stringify(profileData).slice(0, 200)}`);
 
     // Step 3: POST profile to Decent workflow endpoint
@@ -629,7 +637,7 @@ function createPlugin(host) {
       throw new Error(`Failed to import profile to Decent: HTTP ${workflowResponse.status}`);
     }
 
-    const workflowResult = await workflowResponse.json();
+    const workflowResult = await remoteJson(workflowResponse);
     log(`Profile imported successfully: ${JSON.stringify(workflowResult).slice(0, 100)}`);
 
     return {
@@ -679,7 +687,7 @@ function createPlugin(host) {
     do {
       const res = await fetch(`${LOCAL_API_URL}/shots?limit=${limit}&offset=${offset}&order=desc`);
       if (!res.ok) throw new Error(`Local shots lookup failed: HTTP ${res.status}`);
-      const page = await res.json();
+      const page = await remoteJson(res);
       const items = Array.isArray(page) ? page : (page.items || []);
       if (total == null) total = Number(page.total) || items.length;
 
@@ -770,7 +778,7 @@ function createPlugin(host) {
       headers: { "Authorization": getAuthHeader(), "Content-Type": "application/json" },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return await remoteJson(res);
   }
 
   async function visualizerPatch(path, body) {
@@ -791,7 +799,7 @@ function createPlugin(host) {
       }
       throw new Error(`HTTP ${res.status}`);
     }
-    return await res.json();
+    return await remoteJson(res);
   }
 
   function withoutKey(object, key) {
@@ -1104,7 +1112,7 @@ function createPlugin(host) {
       });
       if (res.status === 401 || res.status === 403) return null;
       if (!res.ok) throw new Error(`Visualizer returned HTTP ${res.status}. Check the server URL.`);
-      return await res.json();
+      return await remoteJson(res);
     } catch (e) {
       log(`Back-sync: /me check failed: ${e.message}`);
       throw e;
