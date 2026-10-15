@@ -62,9 +62,9 @@ function createPlugin(host) {
     managedLocalTagsReadyResolve = resolve;
   });
 
-  function safeMessage(message) {
+  function safeMessage(message, additionalSecrets = []) {
     let text = String(message);
-    const secrets = [state.password];
+    const secrets = [state.password, ...additionalSecrets];
     try {
       if (state.username && state.password) secrets.push(btoa(state.username + ":" + state.password));
     } catch (_) {}
@@ -144,8 +144,8 @@ function createPlugin(host) {
     });
   }
 
-  function connectionError(error, serverUrl = state.serverUrl) {
-    const message = safeMessage(error?.message || String(error));
+  function connectionError(error, serverUrl = state.serverUrl, additionalSecrets = []) {
+    const message = safeMessage(error?.message || String(error), additionalSecrets);
     if (/certificate|tls|ssl|handshake/i.test(message)) {
       return `Visualizer TLS connection to ${serverUrl} failed. Check the server certificate.`;
     }
@@ -159,11 +159,11 @@ function createPlugin(host) {
     return `${message} (server: ${serverUrl})`;
   }
 
-  async function visualizerFetch(url, init, serverUrl = state.serverUrl) {
+  async function visualizerFetch(url, init, serverUrl = state.serverUrl, additionalSecrets = []) {
     try {
       return await fetch(url, { ...init, redirect: "error" });
     } catch (error) {
-      throw new Error(connectionError(error, serverUrl));
+      throw new Error(connectionError(error, serverUrl, additionalSecrets));
     }
   }
 
@@ -247,17 +247,12 @@ function createPlugin(host) {
           return await response.json();
         }
 
-        const errorText = await response.text();
-
-        // 4xx → fail fast
-        if (response.status >= 400 && response.status < 500) {
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        // Do not copy an untrusted response body into logs or the host response.
+        // A Visualizer server may echo credentials or shot data in an error page.
+        throw new Error(`HTTP ${response.status}`);
 
       } catch (error) {
-        console.error(`Upload attempt ${i + 1}/${retries} failed:`, error.message, error.stack);
+        log(`Upload attempt ${i + 1}/${retries} failed: ${error.message}`);
 
         if (i === retries - 1) {
           throw error;
@@ -528,14 +523,16 @@ function createPlugin(host) {
   async function checkCredentials(body) {
     const target = normalizeServerUrl(body?.serverUrl == null ? state.serverUrl : body.serverUrl);
     if (body?.serverUrl == null && state.serverUrlError) throw new Error(state.serverUrlError);
-    const headers = { Authorization: getAuthHeader(body) };
+    const authHeader = getAuthHeader(body);
+    const redactionSecrets = [body?.password, authHeader];
+    const headers = { Authorization: authHeader };
     try {
-      const response = await visualizerFetch(`${target}/api/me`, { method: "GET", headers }, target);
+      const response = await visualizerFetch(`${target}/api/me`, { method: "GET", headers }, target, redactionSecrets);
       if (response.status === 401 || response.status === 403) return { valid: false, serverUrl: target, error: `Visualizer rejected the credentials for ${target}. Check the username and password.` };
       if (!response.ok) throw new Error(`Visualizer returned HTTP ${response.status}. Check that ${target} is a Visualizer server.`);
       return { valid: true, serverUrl: target };
     } catch (error) {
-      return { valid: false, serverUrl: target, error: connectionError(error, target) };
+      return { valid: false, serverUrl: target, error: connectionError(error, target, redactionSecrets) };
     }
   }
 
@@ -1509,7 +1506,7 @@ function createPlugin(host) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               error: "Visualizer upload failed",
-              detail: error.message,
+              detail: safeMessage(error?.message || "request failed"),
             }),
           }));
       }
@@ -1522,7 +1519,7 @@ function createPlugin(host) {
         })).catch((error) => ({
           status: 400,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ valid: false, error: error.message }),
+          body: JSON.stringify({ valid: false, error: safeMessage(error?.message || "credential check failed", [request.body?.password]) }),
         }));
       }
 
