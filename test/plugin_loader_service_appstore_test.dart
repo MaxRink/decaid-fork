@@ -121,6 +121,7 @@ void main() {
     late FakeCredentialStore credentialStore;
     late FakeKvStore kvStore;
     var sourceCounter = 0;
+    var failNextCredentialScopeWrite = false;
 
     Future<Object?> waitForStorage(
       String namespace,
@@ -179,9 +180,19 @@ function createPlugin() {
           );
       credentialStore = FakeCredentialStore();
       kvStore = FakeKvStore();
+      failNextCredentialScopeWrite = false;
       service = PluginLoaderService(
         kvStore: kvStore,
         credentialStore: credentialStore,
+        credentialScopeWriter: (pluginId, scope) async {
+          if (failNextCredentialScopeWrite) {
+            failNextCredentialScopeWrite = false;
+            return false;
+          }
+          final prefs = await SharedPreferences.getInstance();
+          final key = 'plugin.settings.credential-scope.$pluginId';
+          return scope == null ? prefs.remove(key) : prefs.setString(key, scope);
+        },
       );
       await service.initialize();
     });
@@ -472,6 +483,39 @@ function createPlugin() {
         );
       },
     );
+
+    test('scope persistence failure leaves rotation fail-closed', () async {
+      const id = 'scope-write-failure.reaplugin';
+      await service.addPlugin(
+        makePluginSource(
+          id,
+          credentialScope: 'ServerUrl',
+          settings: {
+            'ServerUrl': {'type': 'string', 'default': 'https://server-a.example'},
+            'Username': {'type': 'string'},
+            'Password': {'type': 'string', 'secure': true},
+          },
+        ).path,
+      );
+      await service.savePluginSettings(id, {'Username': 'user-a', 'Password': 'secret-a'});
+      failNextCredentialScopeWrite = true;
+      await expectLater(
+        service.savePluginSettings(id, {
+          'ServerUrl': 'https://server-b.example',
+          'Username': 'user-b',
+          'Password': 'secret-b',
+        }),
+        throwsA(isA<StateError>()),
+      );
+      expect(credentialStore.values, isEmpty);
+      expect(await service.pluginSettings(id), {
+        'ServerUrl': 'https://server-a.example',
+        'Username': 'user-a',
+        'Password': {'isSet': false},
+      });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('plugin.settings.credential-scope.$id'), 'https://server-a.example');
+    });
 
     for (final hasBinding in [true, false]) {
       test(

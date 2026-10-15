@@ -2050,11 +2050,9 @@ void main() {
 
   test('credential verification never returns a candidate secret from a remote error', () async {
     final manager = await _loadPlugin('''
-      globalThis.fetch = async () => ({
-        ok: false,
-        status: 500,
-        text: async () => 'upstream echoed candidate-password',
-      });
+      globalThis.fetch = async () => {
+        throw new Error('transport echoed candidate-password Basic Y2FuZGlkYXRlLXVzZXI6Y2FuZGlkYXRlLXBhc3N3b3Jk');
+      };
     ''', settings: {'ServerUrl': 'https://verify.example'});
 
     final response = await _callApi(manager, 'verifyCredentials', {
@@ -2062,15 +2060,18 @@ void main() {
       'password': 'candidate-password',
     });
     expect(response['body'], isNot(contains('candidate-password')));
+    expect(response['body'], isNot(contains('Y2FuZGlkYXRlLXVzZXI6Y2FuZGlkYXRlLXBhc3N3b3Jk')));
   });
 
   test('upload errors do not expose an untrusted response body', () async {
     final manager = await _loadPlugin('''
+      globalThis.__uploadAttempts = 0;
       globalThis.fetch = async (url, init = {}) => {
         if (url.endsWith('/shots/shot-1') && (!init.method || init.method === 'GET')) {
-          return { ok: true, json: async () => (${jsonEncode(_shot())}) };
+          return { ok: true, json: async () => (${jsonEncode(_shot())}), text: async () => JSON.stringify(${jsonEncode(_shot())}) };
         }
         if (url.endsWith('/shots/upload')) {
+          globalThis.__uploadAttempts += 1;
           return { ok: false, status: 500, text: async () => 'remote echoed shot-secret' };
         }
         throw new Error('Unexpected URL: ' + url);
@@ -2079,6 +2080,7 @@ void main() {
 
     final response = await _callApi(manager, 'upload', {'shotId': 'shot-1'});
     expect(response['status'], 502);
+    expect(await _waitForJs(manager, 'globalThis.__uploadAttempts'), greaterThan(0));
     expect(response['body'], isNot(contains('remote echoed shot-secret')));
   });
 
