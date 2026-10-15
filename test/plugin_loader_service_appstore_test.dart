@@ -1452,6 +1452,23 @@ function createPlugin(host) {
           prefs.getString('plugin.settings.credential-scope.$id'),
           'https://server-a.example',
         );
+      final fresh = PluginLoaderService(
+        kvStore: kvStore,
+        credentialStore: credentialStore,
+        credentialScopeWriter: (pluginId, scope) async {
+          final freshPrefs = await SharedPreferences.getInstance();
+          final key = 'plugin.settings.credential-scope.$pluginId';
+          return scope == null
+              ? freshPrefs.remove(key)
+              : freshPrefs.setString(key, scope);
+        },
+      );
+      await fresh.initialize();
+      expect(await fresh.pluginSettings(id), {
+        'ServerUrl': 'https://server-a.example',
+        'Username': 'user-a',
+        'Password': {'isSet': false},
+      });
       });
 
       test('a failed update restores the previous settings', () async {
