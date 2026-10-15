@@ -48,7 +48,8 @@ class PluginLoaderService {
 
   final PluginManager pluginManager;
   final CredentialStore? _credentialStore;
-  final Future<bool> Function(String pluginId, String? scope)? _credentialScopeWriter;
+  final Future<bool> Function(String pluginId, String? scope)?
+  _credentialScopeWriter;
   final _log = Logger('PluginLoaderService');
 
   late Directory _pluginsDir;
@@ -66,7 +67,8 @@ class PluginLoaderService {
     required KeyValueStoreService kvStore,
     DecentProxyService? decentProxyService,
     CredentialStore? credentialStore,
-    Future<bool> Function(String pluginId, String? scope)? credentialScopeWriter,
+    Future<bool> Function(String pluginId, String? scope)?
+    credentialScopeWriter,
     PluginDeviceService? deviceService,
   }) : _credentialStore = credentialStore,
        _credentialScopeWriter = credentialScopeWriter,
@@ -623,7 +625,10 @@ class PluginLoaderService {
           try {
             await _writeSecureSettings(pluginId, {});
           } catch (cleanupError) {
-            _log.severe('Failed to clear credentials after scope rotation failure', cleanupError);
+            _log.severe(
+              'Failed to clear credentials after scope rotation failure',
+              cleanupError,
+            );
           }
           rethrow;
         }
