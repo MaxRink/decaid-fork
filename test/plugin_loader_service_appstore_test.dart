@@ -503,6 +503,7 @@ function createPlugin() {
         ).path,
       );
       await service.savePluginSettings(id, {
+        'ServerUrl': 'https://server-a.example',
         'Username': 'user-a',
         'Password': 'secret-a',
       });
