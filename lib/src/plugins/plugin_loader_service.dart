@@ -50,6 +50,7 @@ class PluginLoaderService {
 
   final PluginManager pluginManager;
   final CredentialStore? _credentialStore;
+  final Future<bool> Function(String pluginId, String? scope)? _credentialScopeWriter;
   final _log = Logger('PluginLoaderService');
 
   late Directory _pluginsDir;
@@ -67,8 +68,10 @@ class PluginLoaderService {
     required KeyValueStoreService kvStore,
     DecentProxyService? decentProxyService,
     CredentialStore? credentialStore,
+    Future<bool> Function(String pluginId, String? scope)? credentialScopeWriter,
     PluginDeviceService? deviceService,
   }) : _credentialStore = credentialStore,
+       _credentialScopeWriter = credentialScopeWriter,
        pluginManager = PluginManager(
          kvStore: kvStore,
          decentProxyService: decentProxyService,
@@ -607,14 +610,30 @@ class PluginLoaderService {
         }
       }
 
-      await _writeSecureSettings(pluginId, secure);
-      if (scopeKey != null) {
-        await _writeCredentialScope(
-          pluginId,
-          _effectiveCredentialScope(manifest, mergedOrdinary),
-        );
+      final nextScope = scopeKey == null
+          ? null
+          : _effectiveCredentialScope(manifest, mergedOrdinary);
+      if (credentialScopeChanged) {
+        // The credential store and preferences have no common transaction.
+        // Clear first so a failed scope write cannot leave a secret bound to A.
+        await _writeSecureSettings(pluginId, {});
+        await _writeCredentialScope(pluginId, nextScope);
+        await _writeOrdinarySettings(pluginId, mergedOrdinary);
+        try {
+          await _writeSecureSettings(pluginId, secure);
+        } catch (_) {
+          try {
+            await _writeSecureSettings(pluginId, {});
+          } catch (cleanupError) {
+            _log.severe('Failed to clear credentials after scope rotation failure', cleanupError);
+          }
+          rethrow;
+        }
+      } else {
+        await _writeSecureSettings(pluginId, secure);
+        if (scopeKey != null) await _writeCredentialScope(pluginId, nextScope);
+        await _writeOrdinarySettings(pluginId, mergedOrdinary);
       }
-      await _writeOrdinarySettings(pluginId, mergedOrdinary);
 
       _log.fine('Settings saved for plugin: $pluginId');
     });
@@ -808,6 +827,13 @@ class PluginLoaderService {
   }
 
   Future<void> _writeCredentialScope(String pluginId, String? scope) async {
+    final writer = _credentialScopeWriter;
+    if (writer != null) {
+      if (!await writer(pluginId, scope)) {
+        throw StateError('Failed to save credential scope for $pluginId');
+      }
+      return;
+    }
     final key = _credentialScopeKey(pluginId);
     if (scope == null) {
       await _prefs.remove(key);

@@ -156,7 +156,9 @@ function createPlugin(host) {
     if (/401|403|credential|password|username|unauthori/i.test(message)) {
       return `Visualizer rejected the credentials for ${serverUrl}. Check the username and password.`;
     }
-    return `${message} (server: ${serverUrl})`;
+    // Never return arbitrary transport text: a proxy or server can echo
+    // credentials or other sensitive request data in an exception message.
+    return `Visualizer request to ${serverUrl} failed.`;
   }
 
   async function visualizerFetch(url, init, serverUrl = state.serverUrl, additionalSecrets = []) {
