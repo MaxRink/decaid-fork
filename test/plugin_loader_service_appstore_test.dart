@@ -540,6 +540,7 @@ function createPlugin() {
       );
       await fresh.initialize();
       expect(await fresh.pluginSettings(id), {
+        'ServerUrl': 'https://server-a.example',
         'Username': 'user-a',
         'Password': {'isSet': false},
       });
