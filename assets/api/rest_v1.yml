@@ -591,7 +591,8 @@ paths:
     get:
       summary: Get LED strip configuration
       description: |
-        Read the current LED strip configuration (all 3 zones × 2 modes)
+        Read only the stored LED strip configuration (all 3 zones × 2 modes),
+        never live preview state,
         from the firmware-persisted palette registers. The state is
         hydrated from the machine once per connection; if hydration has
         not succeeded (no black is ever fabricated as authoritative
@@ -658,6 +659,87 @@ paths:
           description: Machine connected but does not support LED strip
         "503":
           description: Machine write queue is full
+        "500":
+          description: No machine was connected, the machine changed during the write, or the write failed
+
+  /api/v1/machine/ledStrip/preview:
+    post:
+      summary: Show colours on the strips without storing them
+      description: |
+        Writes the firmware's LIVE strip registers, which light the strips at
+        once and are recomputed from the stored palette at the next sleep or
+        wake transition or at boot. The four stored palette registers are never
+        mutated by preview; GET /api/v1/machine/ledStrip remains stored-palette-only.
+        Volatility is guaranteed by firmware rheasman/Bengle#114 (PERM_RW on the
+        live pair, while stored rows remain PERM_RWD). There is no firmware-build
+        gate: on pre-#114 firmware each changed preview frame still flash-writes
+        the live registers. Addresses and 4-byte payloads are unchanged.
+
+        This is the only way to show an ASLEEP colour on an awake machine: a
+        stored write is kept and not lit, because the firmware applies a stored
+        colour only when the machine is already in the state it belongs to.
+
+        Name at least one strip. Each supplied colour must be a string of
+        exactly 12 hexadecimal characters (16-bit RRRRGGGGBBBB, case-insensitive).
+        Null, invalid characters, and shorter or longer strings return 400 before
+        reserving a machine-write queue entry. Returns 404 when the connected
+        machine is not a Bengle.
+      tags: [Machine]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              anyOf:
+                - required: [frontStrip]
+                - required: [backStrip]
+              properties:
+                frontStrip:
+                  type: string
+                  minLength: 12
+                  maxLength: 12
+                  pattern: '^[0-9a-fA-F]{12}$'
+                  description: 16-bit RRRRGGGGBBBB
+                backStrip:
+                  type: string
+                  minLength: 12
+                  maxLength: 12
+                  pattern: '^[0-9a-fA-F]{12}$'
+                  description: 16-bit RRRRGGGGBBBB
+              example: { frontStrip: "FF00D900A000" }
+      responses:
+        "202":
+          description: Preview accepted
+        "400":
+          description: Body is not a JSON object, names neither strip, or a supplied colour is not a string of exactly 12 hexadecimal characters
+        "404":
+          description: Machine connected but does not support LED strip
+        "503":
+          description: Machine write queue is full
+        "500":
+          description: No machine was connected, the machine changed during the write, or the write failed
+
+  /api/v1/machine/ledStrip/preview/clear:
+    post:
+      summary: End a preview and restore the stored palette
+      description: |
+        Refreshes the stored palette from the machine, then unconditionally writes
+        both live registers for its current awake/sleep phase without mutating the
+        stored palette. If the phase changes during restoration, restores again
+        for the new phase before returning success, up to five restore passes.
+        Returns 503 if the phase did not settle within those passes.
+        A preview otherwise stands until the next sleep or wake transition,
+        which may be hours away. Returns 404 when the connected machine is not
+        a Bengle.
+      tags: [Machine]
+      responses:
+        "202":
+          description: Preview cleared
+        "404":
+          description: Machine connected but does not support LED strip
+        "503":
+          description: Machine write queue is full, the stored palette or machine state is not available yet (hydration failed or has not completed), or the awake/sleep phase did not settle after five restore passes; retrying after hydration or when the phase settles may succeed
         "500":
           description: No machine was connected, the machine changed during the write, or the write failed
 

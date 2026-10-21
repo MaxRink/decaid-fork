@@ -249,6 +249,71 @@ class De1Handler {
       });
     });
 
+    app.post('/api/v1/machine/ledStrip/preview', (Request r) async {
+      final dynamic json;
+      try {
+        json = jsonDecode(
+          await readBoundedRequestBodyString(
+            r,
+            maxBytes: smallRequestBodyBytes,
+            timeout: smallRequestBodyTimeout,
+          ),
+        );
+      } on RequestBodyReadException {
+        rethrow;
+      } catch (e) {
+        return jsonBadRequest({'error': 'Invalid JSON body'});
+      }
+      if (json is! Map) {
+        return jsonBadRequest({'error': 'invalid JSON body'});
+      }
+      final map = json as Map<String, dynamic>;
+      if (!map.containsKey('frontStrip') && !map.containsKey('backStrip')) {
+        return jsonBadRequest({
+          'error': 'name at least one of frontStrip or backStrip',
+        });
+      }
+      for (final field in ['frontStrip', 'backStrip']) {
+        if (!map.containsKey(field)) continue;
+        final value = map[field];
+        if (value is! String ||
+            value.length != 12 ||
+            !RegExp(r'^[0-9a-fA-F]{12}$').hasMatch(value)) {
+          return jsonBadRequest({
+            'error': '$field must be exactly 12 hexadecimal characters',
+          });
+        }
+      }
+      final front = map.containsKey('frontStrip')
+          ? Color16.fromJson(map['frontStrip'])
+          : null;
+      final back = map.containsKey('backStrip')
+          ? Color16.fromJson(map['backStrip'])
+          : null;
+      return withQueuedDe1((de1) async {
+        final gate = _bengleFirmwareGate(de1, 'ledStrip');
+        if (gate != null) return gate;
+        await (de1 as BengleInterface).previewLedStrip(
+          front: front,
+          back: back,
+        );
+        return jsonAccepted();
+      });
+    });
+
+    app.post('/api/v1/machine/ledStrip/preview/clear', (Request _) async {
+      return withQueuedDe1((de1) async {
+        final gate = _bengleFirmwareGate(de1, 'ledStrip');
+        if (gate != null) return gate;
+        try {
+          await (de1 as BengleInterface).clearLedStripPreview();
+        } on LedStripStateUnavailableException catch (e) {
+          return jsonServiceUnavailable({'error': e.message});
+        }
+        return jsonAccepted();
+      });
+    });
+
     app.post('/api/v1/machine/ledStrip/commit', (Request _) async {
       return withQueuedDe1((de1) async {
         final gate = _bengleFirmwareGate(de1, 'ledStrip');
