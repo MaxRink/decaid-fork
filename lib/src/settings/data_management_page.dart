@@ -532,10 +532,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
       if (!mounted) return;
 
       await _showImportResultDialog(importResponse);
-
-      if (importResponse.shouldNotifyShotsChanged) {
-        widget.persistenceController.notifyShotsChanged();
-      }
     } on BackupImportException catch (e) {
       _log.severe("Failed to import backup", e);
       if (mounted) {
@@ -580,25 +576,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
     _showProgressDialog(context, 'Importing shots...');
 
     try {
-      final importer = ShotImporter(
-        storage: widget.persistenceController.storageService,
-      );
+      final importer = ShotImporter(controller: widget.persistenceController);
       final file = File(filePath);
       final content = await file.readAsString();
-      final decoded = jsonDecode(content);
-
-      int count = 0;
-      if (decoded is List) {
-        count = await importer.importShotsJson(content);
-      } else {
-        await importer.importShotJson(content);
-        count = 1;
-      }
+      final count = await importer.importJson(content);
 
       if (!mounted) return;
       Navigator.of(context).pop();
-
-      widget.persistenceController.notifyShotsChanged();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -793,7 +777,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
       try {
         final importer = De1appImporter(
-          storageService: widget.persistenceController.storageService,
+          controller: widget.persistenceController,
           profileStorageService: widget.profileStorageService!,
           beanStorageService: widget.beanStorageService!,
           grinderStorageService: widget.grinderStorageService!,
@@ -836,8 +820,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
           ),
         ),
       );
-
-      widget.persistenceController.notifyShotsChanged();
     } finally {
       if (Platform.isAndroid) {
         await SafFolderCopier().cleanup();

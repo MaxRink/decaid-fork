@@ -452,6 +452,7 @@ class ConnectionManager {
   bool get _machineConnected => _disconnectSupervisor.isMachineConnected;
   bool get _scaleConnected => _disconnectSupervisor.isScaleConnected;
   bool _scaleSleepRequested = false;
+  bool _scaleScanTeardownUnconfirmed = false;
   bool get _scaleReconnectBlockedByPowerMode =>
       _scaleSleepRequested ||
       (settingsController.scalePowerMode == ScalePowerMode.disconnect &&
@@ -485,10 +486,13 @@ class ConnectionManager {
       DisconnectExpectations();
 
   Completer<void>? _queuedScaleOnly;
+  bool _queuedScaleOnlyWakeRecovery = false;
 
   Completer<void>? _queuedExplicitScan;
   Timer? _postWakeScaleLease;
   Future<void> Function()? _queuedScanOnly;
+  ConnectionAttemptPolicy _queuedExplicitPolicy =
+      ConnectionAttemptPolicy.explicitScan;
   bool _adapterRecoveryQueued = false;
   bool _adapterRecoveryNeeded = false;
   int _adapterRecoveryEpoch = 0;
@@ -504,8 +508,8 @@ class ConnectionManager {
 
   int _scaleReconnectFailures = 0;
 
-  Duration get _scaleReconnectBackoff {
-    final multiplier = (1 << _scaleReconnectFailures).clamp(1, 12);
+  Duration _scaleReconnectBackoff(int failures) {
+    final multiplier = (1 << failures).clamp(1, 12);
     final delay = scaleReconnectBaseDelay * multiplier;
     const cap = Duration(seconds: 60);
     return delay > cap ? cap : delay;
@@ -905,7 +909,7 @@ class ConnectionManager {
       if (settingsController.preferredScaleId != null) {
         _ensureScaleReacquisition();
       } else {
-        _armPostQuickConnectScaleScan();
+        _armDeferredScaleScan();
       }
     }
     _publishStatus(currentStatus.copyWith(phase: ConnectionPhase.ready));
@@ -1123,6 +1127,9 @@ class ConnectionManager {
 
   bool get connectionWorkActive => _isConnecting || _activeConnectionWork > 0;
 
+  @visibleForTesting
+  Future<void>? get debugQueuedScaleOnlyConnection => _queuedScaleOnly?.future;
+
   String explicitScanDisposition({required bool connect}) {
     if (_postWakeScaleLease != null) {
       return _queuedExplicitScan == null ? 'queued' : 'coalesced';
@@ -1135,6 +1142,7 @@ class ConnectionManager {
 
   Future<void> requestExternalScan({
     required bool connect,
+    bool connectPreferredScaleEarly = false,
     Future<void> Function()? scanOnly,
   }) {
     if (!connect && scanOnly == null) {
@@ -1143,15 +1151,30 @@ class ConnectionManager {
     if (_postWakeScaleLease != null) {
       final alreadyQueued = _queuedExplicitScan != null;
       final queued = _queuedExplicitScan ??= Completer<void>();
-      if (!alreadyQueued) _queuedScanOnly = connect ? null : scanOnly;
-      if (connect) _queuedScanOnly = null;
+      if (!alreadyQueued) {
+        _queuedScanOnly = connect ? null : scanOnly;
+        _queuedExplicitPolicy = ConnectionAttemptPolicy.explicitScan;
+      }
+      if (connect) {
+        _queuedScanOnly = null;
+        if (connectPreferredScaleEarly) {
+          _queuedExplicitPolicy =
+              ConnectionAttemptPolicy.explicitPreferredScaleReconnect;
+        }
+      }
       _log.info(
         'Client explicit scan ${alreadyQueued ? "coalesced" : "queued"} '
         'behind post-wake preferred-scale watch',
       );
       return queued.future;
     }
-    return connect ? scanAndConnect() : scanOnly!();
+    return connect
+        ? _scanAndConnect(
+            connectPreferredScaleEarly
+                ? ConnectionAttemptPolicy.explicitPreferredScaleReconnect
+                : ConnectionAttemptPolicy.explicitScan,
+          )
+        : scanOnly!();
   }
 
   void _endPostWakeScaleLease({required bool runDeferred}) {
@@ -1175,6 +1198,8 @@ class ConnectionManager {
     _queuedExplicitScan = null;
     final scanOnly = _queuedScanOnly;
     _queuedScanOnly = null;
+    final policy = _queuedExplicitPolicy;
+    _queuedExplicitPolicy = ConnectionAttemptPolicy.explicitScan;
     if (queued == null) return;
     if (!runDeferred ||
         _scaleConnected ||
@@ -1197,7 +1222,7 @@ class ConnectionManager {
         if (scanOnly != null) {
           await scanOnly();
         } else {
-          await scanAndConnect();
+          await _scanAndConnect(policy);
         }
         queued.complete();
       } catch (e, st) {
@@ -1206,10 +1231,18 @@ class ConnectionManager {
     }());
   }
 
-  Future<void> scanAndConnect() async {
+  Future<void> scanAndConnect() =>
+      _scanAndConnect(ConnectionAttemptPolicy.explicitScan);
+
+  Future<void> _scanAndConnect(ConnectionAttemptPolicy policy) async {
     if (_shuttingDown) return;
     if (_queuedExplicitScan != null) {
-      if (_queuedScanOnly == null) return _queuedExplicitScan!.future;
+      if (_queuedScanOnly == null) {
+        if (policy.stopBeforePreferredScaleConnect) {
+          _queuedExplicitPolicy = policy;
+        }
+        return _queuedExplicitScan!.future;
+      }
       final superseded = _queuedExplicitScan!;
       _queuedExplicitScan = null;
       _queuedScanOnly = null;
@@ -1222,18 +1255,17 @@ class ConnectionManager {
       _explicitScanGeneration++;
       deviceScanner.stopScan();
       _queuedExplicitScan = Completer<void>();
+      _queuedExplicitPolicy = policy;
       return _queuedExplicitScan!.future;
     }
     _explicitScanGeneration++;
-    await _runConnect(
-      scaleOnly: false,
-      policy: ConnectionAttemptPolicy.explicitScan,
-    );
+    await _runConnect(scaleOnly: false, policy: policy);
   }
 
   Future<bool> _runConnect({
     required bool scaleOnly,
     required ConnectionAttemptPolicy policy,
+    bool settledWakeRecovery = false,
     bool adapterRecovery = false,
     DeviceAttachedEvent? attachEvent,
   }) {
@@ -1242,6 +1274,7 @@ class ConnectionManager {
       () => _runConnectImpl(
         scaleOnly: scaleOnly,
         policy: policy,
+        settledWakeRecovery: settledWakeRecovery,
         adapterRecovery: adapterRecovery,
         attachEvent: attachEvent,
       ),
@@ -1265,12 +1298,16 @@ class ConnectionManager {
   Future<bool> _runConnectImpl({
     required bool scaleOnly,
     required ConnectionAttemptPolicy policy,
+    bool settledWakeRecovery = false,
     bool adapterRecovery = false,
     DeviceAttachedEvent? attachEvent,
   }) async {
     if (_isConnecting) {
       if (adapterRecovery) return true;
       if (scaleOnly) {
+        _queuedScaleOnlyWakeRecovery = _queuedScaleOnly == null
+            ? settledWakeRecovery
+            : _queuedScaleOnlyWakeRecovery && settledWakeRecovery;
         final completer = _queuedScaleOnly ??= Completer<void>();
         return completer.future.then((_) => true);
       }
@@ -1283,7 +1320,7 @@ class ConnectionManager {
         await _executeAdapterRecovery();
       } else if (attachEvent != null) {
         return await _executeAttachProbe(attachEvent);
-      } else {
+      } else if (!settledWakeRecovery || _needsSettledWakeRecovery) {
         await _executeConnect(scaleOnly, policy: policy);
       }
     } finally {
@@ -1314,11 +1351,10 @@ class ConnectionManager {
         if (_queuedExplicitScan != null && _postWakeScaleLease == null) {
           final drain = _queuedExplicitScan!;
           _queuedExplicitScan = null;
+          final queuedPolicy = _queuedExplicitPolicy;
+          _queuedExplicitPolicy = ConnectionAttemptPolicy.explicitScan;
           try {
-            await _executeConnect(
-              false,
-              policy: ConnectionAttemptPolicy.explicitScan,
-            );
+            await _executeConnect(false, policy: queuedPolicy);
             drain.complete();
           } catch (e, st) {
             drain.completeError(e, st);
@@ -1333,12 +1369,16 @@ class ConnectionManager {
         }
 
         final drain = _queuedScaleOnly!;
+        final wakeRecovery = _queuedScaleOnlyWakeRecovery;
         _queuedScaleOnly = null;
+        _queuedScaleOnlyWakeRecovery = false;
         try {
-          await _executeConnect(
-            true,
-            policy: ConnectionAttemptPolicy.scaleRecovery,
-          );
+          if (!wakeRecovery || _needsSettledWakeRecovery) {
+            await _executeConnect(
+              true,
+              policy: ConnectionAttemptPolicy.scaleRecovery,
+            );
+          }
           drain.complete();
         } catch (e, st) {
           drain.completeError(e, st);
@@ -1355,7 +1395,11 @@ class ConnectionManager {
   }) async {
     final resolvedIntent =
         intent ??
-        (identical(policy, ConnectionAttemptPolicy.explicitScan)
+        (identical(policy, ConnectionAttemptPolicy.explicitScan) ||
+                identical(
+                  policy,
+                  ConnectionAttemptPolicy.explicitPreferredScaleReconnect,
+                )
             ? ConnectionIntent.explicitDiscovery
             : identical(policy, ConnectionAttemptPolicy.scaleRecovery)
             ? ConnectionIntent.scaleRecovery
@@ -1502,10 +1546,34 @@ class ConnectionManager {
     }
   }
 
+  bool _canReconnectPreferredScaleEarly(String? preferredScaleId) =>
+      !_shuttingDown &&
+      _machineConnected &&
+      _disconnectSupervisor.latestMachine is! BengleInterface &&
+      !_isConnectingMachine &&
+      !_isConnectingScale &&
+      !_usbAttachLatched &&
+      !_pendingAttachAttempt &&
+      !_attachProbeInFlight &&
+      currentStatus.pendingAmbiguity == null &&
+      _selectionSession?.isActive != true &&
+      !_scaleConnected &&
+      _primaryScaleClaims.isEmpty &&
+      !_scaleReconnectBlockedByPowerMode &&
+      preferredScaleId != null &&
+      preferredScaleId.isNotEmpty &&
+      settingsController.preferredScaleId == preferredScaleId &&
+      !auxiliaryScaleRegistry.isReserved(preferredScaleId);
+
   Future<void> _connectImpl({
     required bool scaleOnly,
     required ConnectionAttemptPolicy policy,
   }) async {
+    final reconnectMachine = _disconnectSupervisor.latestMachine;
+    final reconnectScaleId = settingsController.preferredScaleId;
+    final reconnectEligible =
+        policy.stopBeforePreferredScaleConnect &&
+        _canReconnectPreferredScaleEarly(reconnectScaleId);
     _cancelPreferredScaleReconnect(resetFailures: !scaleOnly);
     if (_scaleWatch.hasPendingRequest) await _scaleWatch.disarm();
     if (scaleOnly && _scaleReconnectBlockedByPowerMode) {
@@ -1545,7 +1613,7 @@ class ConnectionManager {
           if (settingsController.preferredScaleId != null) {
             _ensureScaleReacquisition();
           } else {
-            _armPostQuickConnectScaleScan();
+            _armDeferredScaleScan();
           }
         }
         _publishStatus(currentStatus.copyWith(phase: ConnectionPhase.ready));
@@ -1586,15 +1654,31 @@ class ConnectionManager {
       preferredMachineId: policy.connectPreferredDuringScan
           ? preferredMachineId
           : null,
-      preferredScaleId: policy.connectPreferredDuringScan
+      preferredScaleId:
+          policy.connectPreferredDuringScan && !_scaleScanTeardownUnconfirmed
           ? preferredScaleId
           : null,
       earlyStopEnabled: earlyStopEnabled,
       onEarlyAttemptComplete: () => _checkEarlyStop(earlyStopEnabled),
       scanStartTime: scanStartTime,
       scaleFilter: scaleFilter,
+      requireConfirmedTeardown: _scaleScanTeardownUnconfirmed,
+      onScanTeardown: (confirmed) {
+        _scaleScanTeardownUnconfirmed = !confirmed;
+      },
+      stopOnPreferredScaleId: reconnectEligible ? reconnectScaleId : null,
+      canStopOnPreferredScale: () =>
+          _explicitScanGeneration == scanGen &&
+          identical(_disconnectSupervisor.latestMachine, reconnectMachine) &&
+          _canReconnectPreferredScaleEarly(reconnectScaleId),
     );
     if (scanRun == null) {
+      return;
+    }
+    if (scanRun.preferredScaleStopRequested &&
+        (!identical(_disconnectSupervisor.latestMachine, reconnectMachine) ||
+            !_canReconnectPreferredScaleEarly(reconnectScaleId))) {
+      _settleAfterScalePhase();
       return;
     }
 
@@ -1764,12 +1848,20 @@ class ConnectionManager {
     }
   }
 
-  void _armPostQuickConnectScaleScan() {
+  bool get _needsSettledWakeRecovery =>
+      !_shuttingDown &&
+      !_scaleConnected &&
+      _machineConnected &&
+      !_scaleReconnectBlockedByPowerMode &&
+      _disconnectSupervisor.latestMachine is! BengleInterface;
+
+  void _armDeferredScaleScan({bool wakeRecovery = false}) {
     if (_shuttingDown) return;
-    if (_scaleConnected) return;
+    if (_scaleConnected || !_machineConnected) return;
     if (_scaleReconnectBlockedByPowerMode) return;
+    if (_disconnectSupervisor.latestMachine is BengleInterface) return;
     _log.fine(
-      'Quick-connected machine without a scale; '
+      'Machine without a scale; '
       'arming deferred scale scan in ${deferredScaleScanDelay.inSeconds}s',
     );
     _deferredScaleScan?.cancel();
@@ -1777,26 +1869,22 @@ class ConnectionManager {
       _deferredScaleScan = null;
       if (_scaleConnected) return;
       if (!_machineConnected || _scaleReconnectBlockedByPowerMode) return;
-      connect(scaleOnly: true);
+      if (supportsBackgroundScaleWatch &&
+          settingsController.preferredScaleId != null) {
+        if (_preferredScaleReconnect == null) _ensureScaleReacquisition();
+        return;
+      }
+      _runConnect(
+        scaleOnly: true,
+        policy: ConnectionAttemptPolicy.scaleRecovery,
+        settledWakeRecovery: wakeRecovery,
+      );
     });
   }
 
   void _maybeArmDeferredScaleScan() {
-    if (_shuttingDown) return;
     if (!_earlyStopFired) return;
-    if (!_machineConnected || _scaleConnected) return;
-    if (_scaleReconnectBlockedByPowerMode) return;
-    _log.fine(
-      'Machine connected without a scale after an early stop; '
-      'arming deferred scale rescan in ${deferredScaleScanDelay.inSeconds}s',
-    );
-    _deferredScaleScan?.cancel();
-    _deferredScaleScan = Timer(deferredScaleScanDelay, () {
-      _deferredScaleScan = null;
-      if (_scaleConnected) return;
-      if (!_machineConnected || _scaleReconnectBlockedByPowerMode) return;
-      connect(scaleOnly: true);
-    });
+    _armDeferredScaleScan();
   }
 
   void _ensureScaleReacquisition() {
@@ -1844,11 +1932,21 @@ class ConnectionManager {
     await connectScale(scale);
   }
 
-  void _maybeSchedulePreferredScaleReconnect() {
-    if (_preferredScaleReconnect != null) return;
+  void _maybeSchedulePreferredScaleReconnect({bool reschedulePending = false}) {
+    if (reschedulePending
+        ? _preferredScaleReconnect == null
+        : _preferredScaleReconnect != null) {
+      return;
+    }
     if (!_shouldRetryPreferredScale()) return;
-    final delay = _scaleReconnectBackoff;
-    _scaleReconnectFailures++;
+    final delay = _scaleReconnectBackoff(
+      _scaleReconnectFailures - (reschedulePending ? 1 : 0),
+    );
+    if (reschedulePending) {
+      _preferredScaleReconnect!.cancel();
+    } else {
+      _scaleReconnectFailures++;
+    }
     _log.fine(
       'Preferred scale is missing (failure #$_scaleReconnectFailures); '
       'retrying scale scan in ${delay.inSeconds}s',
@@ -1856,12 +1954,18 @@ class ConnectionManager {
     _preferredScaleReconnect = Timer(delay, () {
       _preferredScaleReconnect = null;
       if (!_shouldRetryPreferredScale()) return;
+      if (reschedulePending &&
+          supportsBackgroundScaleWatch &&
+          _scaleWatch.hasPendingRequest) {
+        return;
+      }
       connect(scaleOnly: true);
     });
   }
 
   bool _shouldRetryPreferredScale() {
     return !_shuttingDown &&
+        !_scaleScanTeardownUnconfirmed &&
         _machineConnected &&
         !_scaleConnected &&
         currentStatus.pendingAmbiguity != AmbiguityReason.scalePicker &&
@@ -1981,6 +2085,10 @@ class ConnectionManager {
           );
           _pauseScaleReconnectForPowerMode();
         } else {
+          if (waking) {
+            _maybeSchedulePreferredScaleReconnect(reschedulePending: true);
+            _armDeferredScaleScan(wakeRecovery: true);
+          }
           _ensureScaleReacquisition();
           if (waking &&
               _shouldRetryPreferredScale() &&

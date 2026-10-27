@@ -64,6 +64,25 @@ backgrounded. After ten minutes in the background, it unloads the page and
 reloads the selected skin when the app returns. Skin state that must survive
 this reload should be persisted through the Decaid API or browser storage.
 
+WebView pause/resume and timer bridge failures are awaited and logged without
+terminating the view; unsupported methods are skipped. Timer operations are
+ordered across view replacements; a failed resume remains eligible for retry on
+disposal or when a new WebView is created. Native timers are process-global, so
+an unresolved native timer call must finish before any later timer operation,
+even in a replacement view. A native timer Future that never completes therefore
+blocks the timer queue until process restart. Generation fencing cannot cancel a
+native call or prevent its late global side effect, so bypassing that call would
+violate ordering. WebView pause/resume calls run independently of this queue.
+
+On Windows, an embedded skin that has not finished its initial load within
+30 seconds shows an error with **Open in Browser** and **Go to Dashboard**
+instead of an indefinite spinner. The log distinguishes browser creation from
+page loading. The pending WebView remains mounted and can recover if loading
+finishes later. Replacing the simulated device starts a new loading attempt;
+callbacks from the previous view cannot complete it. A failed browser launch
+keeps the recovery screen available. This does not move or clear browser storage,
+retry downloads, or identify the native cause of a startup failure.
+
 ### Live Camera Access on Android, iOS and macOS
 
 An installed skin in the embedded Android, iOS or macOS WebView can request a
@@ -136,6 +155,48 @@ A skin can capture a still image or record camera-only video from an approved
 live stream instead.
 
 Windows and Linux camera support remain unchanged.
+
+### Android Composition Diagnostics
+
+The native **Advanced > Skin composition (diagnostic)** selector offers
+**HC (default)** and **TLHC (HC fallback)**. Hybrid composition remains the
+default. The texture-layer option is experimental and persisted through the
+existing feature-flag settings. Changing it recreates the embedded WebView;
+unsaved page state may be lost. Failed saves keep the previous mode selected
+and report the failure. Other platforms are unaffected.
+Selections made while a save is pending are persisted in order, so the last
+selection wins. A failed save does not prevent a queued selection or retry.
+
+With the pinned Android plugin, `useHybridComposition: false` requests
+texture-layer hybrid composition with hybrid fallback, not Virtual Display.
+Impeller remains unchanged. Neither mode is claimed to be faster on all devices.
+
+Creation records in the app log and `webview_console.log` include view ID,
+requested mode, WebView provider/package version, Android SDK, Flutter version
+and revision, Android plugin version and read-back rendering settings. Missing
+or failed probes are recorded as null (Flutter metadata may be `unknown` in
+tests/custom builds). Renderer exits include the view ID, mode and crash data
+in the WebView log. The plugin does not expose which Flutter fallback path
+actually ran: `actualComposition` is explicitly `not-exposed-by-plugin`.
+Read-back settings are not proof that a texture path was selected.
+
+For a comparison, keep device, provider, skin/version and workload fixed;
+record the build and creation record for each run. Warm up each mode, reset
+`dumpsys gfxinfo` for the app package, repeat equal-length swipes and compare
+frame-time percentiles with skin renderer traces. Test keyboard, accessibility,
+native overlays and background/resume separately before retaining a mode.
+Windows unit tests and a Samsung test cannot establish an improvement on the
+reported Teclast P85Pro with WebView 91.
+
+### Text Scaling
+
+Decaid pins the embedded WebView's text zoom to 100%, so the device's system
+font-size setting does not rescale a skin. Android would otherwise apply that
+setting to text but not to layout, growing a skin's type while the boxes
+holding it stayed the same size — text then overflows its container, and only
+inside the app, since a browser on the same device is unaffected. A skin owns
+its own scaling and should size its text itself.
+
 
 ### Skin Origins and Browser Storage
 
@@ -3159,13 +3220,13 @@ This creates an `out/` directory with static HTML/CSS/JS files.
 **Option B: Install from ZIP** (works on all platforms):
 
 1. Package your build output as a `.zip`
-2. In Decaid, open **Launcher → Skins**, tap the **+** (Install skin) button and choose **ZIP file**
+2. In Decaid, open **Launcher → Skins**, open the cogwheel menu, then **Install skin → ZIP file**
 3. Pick the file; the skin is extracted, installed, and loaded immediately
 
 **Option B2: Install from GitHub** (public repositories only):
 
 1. Push your skin to a GitHub repository — either as a tagged release with a `.zip` asset, or on a branch
-2. In Decaid, open **Launcher → Skins**, tap the **+** (Install skin) button and choose **GitHub Release** or **GitHub Branch**
+2. In Decaid, open **Launcher → Skins**, open the cogwheel menu, then **Install skin → GitHub Release** or **GitHub Branch**
 3. Enter `owner/repo` (and optionally the asset name, or the branch, defaulting to `main`)
 4. The skin is installed and appears in the skin list; **Check for updates** re-fetches from the same source
 
@@ -3536,6 +3597,17 @@ The default skin preference:
 
 ## Version Management & Updates
 
+Online failures use plain-language guidance; technical details stay in logs.
+**Retry** retains repository, branch, and asset options. Concurrent remote downloads
+share one batch, including Settings Retry. Batches attempt all items and retain
+successes; complete or partial failures show warnings and return HTTP 500.
+In native Settings, skin downloading waits for an available app-update dialog
+to close so a skin failure's Retry action is not hidden behind its modal barrier.
+Startup/periodic failures stay quiet. Installed skins and local ZIP installation
+remain usable offline.
+Local ZIP installation failures use the same guidance, with filesystem and parser
+diagnostics kept in logs.
+
 Decaid tracks skin metadata in `.rea_metadata.json`:
 
 ```json
@@ -3565,7 +3637,13 @@ Decaid tracks skin metadata in `.rea_metadata.json`:
 - User-installed skins are checked for updates via `updateAllSkins()`, which
   runs on the app's periodic update check, from `POST /api/v1/webui/skins/update`,
   from the web settings plugin's "Check for Skin Updates", and from the native
-  skin selector's "Check for updates" button.
+  skin page's cogwheel menu under **Check for updates**.
+- During an update check on the native skin page, the cogwheel shows progress
+  and **Check for updates** is disabled until the check finishes, including
+  after a failure. The menu can still be opened to access installation.
+- Concurrent native, periodic, and REST checks share one in-flight operation.
+  Leaving and reopening the page preserves its busy state and refreshes the
+  current skin list when that operation finishes.
 - Raw-URL and GitHub-release skins are compared against their recorded source
   on every check: URL skins via HTTP `ETag` / `Last-Modified` headers,
   release skins by re-resolving the latest release (honoring the recorded

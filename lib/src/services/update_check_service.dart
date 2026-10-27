@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:logging/logging.dart';
+import 'package:reaprime/src/util/remote_error.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:reaprime/build_info.dart';
 import 'package:reaprime/src/services/android_updater.dart';
+import 'package:reaprime/src/services/github_rate_limit.dart';
 import 'package:reaprime/src/services/app_update_state.dart';
 import 'package:reaprime/src/settings/settings_service.dart';
 import 'package:reaprime/src/plugins/plugin_source_service.dart';
@@ -39,9 +41,16 @@ class UpdateCheckService {
     PluginSourceService? pluginSourceService,
     bool? platformIsAndroid,
     bool? platformIsMacOS,
+    GithubRateLimit? rateLimit,
     this.externallyManaged = BuildInfo.appStore,
   }) : _settingsService = settingsService,
-       _updater = updater ?? AndroidUpdater(owner: 'tadelv', repo: 'reaprime'),
+       _updater =
+           updater ??
+           AndroidUpdater(
+             owner: 'tadelv',
+             repo: 'reaprime',
+             rateLimit: rateLimit,
+           ),
        _webUIStorage = webUIStorage,
        _pluginSourceService = pluginSourceService,
        _isAndroid = platformIsAndroid ?? Platform.isAndroid,
@@ -117,6 +126,7 @@ class UpdateCheckService {
     }
 
     final update = _availableUpdate!;
+    var action = 'download the app update';
     try {
       _emit(AppUpdatePhase.downloading, progress: 0);
       var lastEmitted = 0.0;
@@ -131,6 +141,7 @@ class UpdateCheckService {
       );
 
       _emit(AppUpdatePhase.installing);
+      action = 'install the app update';
       final started = await _updater.installUpdate(path);
       if (!started) {
         _emit(
@@ -140,7 +151,7 @@ class UpdateCheckService {
       }
     } catch (e, st) {
       _log.severe('Update download/install failed', e, st);
-      _emit(AppUpdatePhase.error, error: 'Update failed: $e');
+      _emit(AppUpdatePhase.error, error: remoteErrorMessage(e, action: action));
     }
   }
 
@@ -254,7 +265,10 @@ class UpdateCheckService {
         );
         return null;
       }
-      _emit(AppUpdatePhase.error, error: 'Update check failed: $e');
+      _emit(
+        AppUpdatePhase.error,
+        error: remoteErrorMessage(e, action: 'check for app updates'),
+      );
       rethrow;
     }
   }

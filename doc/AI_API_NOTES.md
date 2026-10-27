@@ -180,11 +180,12 @@ A hostname that resolves to a device address does pass the port-3000 entry redir
 
 ## Decent Binary Protocol
 
-**Source:** Original DE1 app at `github.com/decentespresso/de1app` is the authoritative source for DE1 protocol behavior, BLE characteristics, and machine state logic.
+The protocol is DE1-specific. See
+[`device-notes/de1.md`](device-notes/de1.md#protocol-source-of-truth).
 
-**Profiles:** Use Profile JSON v2 format. See `doc/Profiles.md` for the full profile API and content-based hashing.
-
-**MMR (Memory-Mapped Register) reads:** Used for DE1 debug log buffer, firmware settings, and advanced state. Not for general profile or workflow operations.
+MMR (Memory-Mapped Register) reads serve DE1 debug logs, firmware settings, and
+advanced machine state. Use the profile and workflow APIs for general profile
+or workflow operations, not raw MMR access.
 
 ## Workflow Dual Representation
 
@@ -451,12 +452,14 @@ safety path is the exception documented below:
 - `POST /api/v1/machine/calibration`
 - `POST /api/v1/machine/waterLevels`
 - `PUT /api/v1/machine/cupWarmer`, `PUT /api/v1/machine/ledStrip`,
+  `POST /api/v1/machine/ledStrip/preview`,
+  `POST /api/v1/machine/ledStrip/preview/clear`,
   `POST /api/v1/machine/ledStrip/commit`, `POST /api/v1/machine/ledStrip/reset`
 
 Every endpoint above can return `503` when the 32-entry pending queue is full and
 `400` for malformed JSON bodies
 (machine settings, advanced, calibration, waterLevels, cupWarmer, ledStrip,
-profile, and shot settings parse their complete body before reserving a queue entry).
+preview, profile, and shot settings parse their complete body before reserving a queue entry).
 Machine-write failures otherwise map to `500`.
 
 Documented bypasses:

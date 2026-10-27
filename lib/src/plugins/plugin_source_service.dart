@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:reaprime/src/plugins/plugin_loader_service.dart';
 import 'package:reaprime/src/plugins/plugin_manifest.dart';
@@ -9,6 +10,8 @@ import 'package:reaprime/src/plugins/plugin_package.dart';
 import 'package:reaprime/src/plugins/plugin_source.dart';
 import 'package:reaprime/src/plugins/plugin_version.dart';
 import 'package:reaprime/src/util/github_archive.dart';
+import 'package:reaprime/src/util/remote_error.dart';
+import 'package:reaprime/src/util/remote_update_exception.dart';
 import 'package:reaprime/src/webui_support/webui_zip_support.dart';
 
 class PluginApprovalRequiredException implements Exception {
@@ -35,8 +38,11 @@ class PluginSourceService {
 
   final PluginLoaderService _loader;
   final _log = Logger('PluginSourceService');
+  final ValueNotifier<Future<void>?> _updateCheck = ValueNotifier(null);
 
   PluginSourceService(this._loader);
+
+  ValueListenable<Future<void>?> get updateCheck => _updateCheck;
 
   PluginSource? sourceFor(String pluginId) {
     try {
@@ -208,26 +214,50 @@ class PluginSourceService {
     }
   }
 
-  Future<void> updateAllPlugins() async {
+  Future<void> updateAllPlugins() => _updateCheck.value ??= _updateAllPlugins()
+      .whenComplete(() => _updateCheck.value = null);
+
+  Future<void> _updateAllPlugins() async {
     _log.info('Starting update check for managed plugins');
     seedBundledSources();
+    var failures = const <({String item, Object error})>[];
+    var attemptedCount = 0;
 
     for (final manifest in _loader.availablePlugins) {
       final source = sourceFor(manifest.id);
       if (source == null || !source.kind.isManaged) continue;
+      attemptedCount++;
 
       try {
         await _updatePlugin(manifest, source);
       } catch (e, st) {
         _log.warning('Failed to update plugin "${manifest.id}"', e, st);
-        _writeSource(
-          manifest.id,
-          source.copyWith(lastChecked: DateTime.now(), lastError: '$e'),
-        );
+        failures = [...failures, (item: manifest.id, error: e)];
+        try {
+          _writeSource(
+            manifest.id,
+            source.copyWith(
+              lastChecked: DateTime.now(),
+              lastError: remoteErrorMessage(e, action: 'update the plugin'),
+            ),
+          );
+        } catch (metadataError, metadataStackTrace) {
+          _log.warning(
+            'Failed to record update error for plugin "${manifest.id}"',
+            metadataError,
+            metadataStackTrace,
+          );
+        }
       }
     }
 
     _log.info('Finished update check for managed plugins');
+    if (failures.isNotEmpty) {
+      throw RemoteUpdateException(
+        attemptedCount: attemptedCount,
+        failures: failures,
+      );
+    }
   }
 
   Future<void> _updatePlugin(

@@ -1,12 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:http/http.dart' as http;
+import 'package:reaprime/src/util/remote_error.dart';
+import 'package:reaprime/src/util/remote_update_exception.dart';
+import 'package:reaprime/src/util/user_facing_exception.dart';
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
+import 'package:reaprime/src/services/github_rate_limit.dart';
 import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/services/storage/app_directories.dart';
 import 'package:reaprime/src/util/safe_path.dart';
@@ -146,9 +150,45 @@ class WebUIStorage {
   final Map<String, WebUISkin> _installedSkins = {};
   final Map<String, WebUIReaMetadata> _skinMetadata = {};
   bool _initialized = false;
+  final ValueNotifier<Future<void>?> _updateCheck = ValueNotifier(null);
+  Future<void>? _remoteDownload;
 
-  WebUIStorage(this._settingsController, {Directory? webUIDir})
-    : _webUIDirOverride = webUIDir;
+  final GithubRateLimit _rateLimit;
+
+  WebUIStorage(
+    this._settingsController, {
+    Directory? webUIDir,
+    GithubRateLimit? rateLimit,
+  }) : _webUIDirOverride = webUIDir,
+       _rateLimit = rateLimit ?? GithubRateLimit();
+
+  Future<http.Response> _getGitHubRelease(String apiUrl) async {
+    final resetAt = _rateLimit.resetAt;
+    if (resetAt != null) {
+      _log.fine(
+        'GitHub rate limit active; skin updates resume at '
+        '${resetAt.toIso8601String()}',
+      );
+      throw remoteHttpError(429);
+    }
+    final response = await http.get(
+      Uri.parse(apiUrl),
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Decent-WebUI',
+      },
+    );
+    if (response.statusCode != 200) {
+      final rateLimited = _rateLimit.recordIfLimited(response);
+      throw RemoteServiceException(
+        response.statusCode,
+        remoteHttpError(rateLimited ? 429 : response.statusCode).userMessage,
+      );
+    }
+    return response;
+  }
+
+  ValueListenable<Future<void>?> get updateCheck => _updateCheck;
 
   @visibleForTesting
   static bool get diagnosticsSkinEnabled => bool.fromEnvironment('diagnostics');
@@ -202,7 +242,11 @@ class WebUIStorage {
     await _copyBundledSkins();
 
     if (downloadRemote) {
-      await downloadRemoteSkins();
+      try {
+        await downloadRemoteSkins();
+      } on RemoteUpdateException catch (e, st) {
+        _log.warning('Remote skins unavailable during initialization', e, st);
+      }
     }
 
     await _scanInstalledSkins();
@@ -292,7 +336,7 @@ class WebUIStorage {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode != 200) {
-        throw Exception('Failed to download: ${response.statusCode}');
+        throw remoteHttpError(response.statusCode);
       }
       final etag = response.headers['etag'];
       final lastModified = response.headers['last-modified'];
@@ -334,7 +378,9 @@ class WebUIStorage {
   Future<void> installFromGitHub(String repo, {String branch = 'main'}) async {
     final parts = repo.split('/');
     if (parts.length < 2) {
-      throw Exception('Invalid GitHub repo format. Use: owner/repo');
+      throw const UserFacingFormatException(
+        'Invalid GitHub repo format. Use: owner/repo',
+      );
     }
 
     final owner = parts[0];
@@ -359,7 +405,9 @@ class WebUIStorage {
   }) async {
     final parts = repo.split('/');
     if (parts.length != 2) {
-      throw Exception('Invalid GitHub repo format. Use: owner/repo');
+      throw const UserFacingFormatException(
+        'Invalid GitHub repo format. Use: owner/repo',
+      );
     }
 
     _log.info('Installing WebUI from GitHub release: $repo');
@@ -369,19 +417,7 @@ class WebUIStorage {
           ? 'https://api.github.com/repos/$repo/releases'
           : 'https://api.github.com/repos/$repo/releases/latest';
 
-      final releaseResponse = await http.get(
-        Uri.parse(apiUrl),
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Decent-WebUI',
-        },
-      );
-
-      if (releaseResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to fetch GitHub release: ${releaseResponse.statusCode}',
-        );
-      }
+      final releaseResponse = await _getGitHubRelease(apiUrl);
 
       final dynamic releaseData = includePrerelease
           ? (jsonDecode(releaseResponse.body) as List).first
@@ -397,12 +433,15 @@ class WebUIStorage {
       if (assetName != null) {
         targetAsset = assets.firstWhere(
           (asset) => asset['name'] == assetName,
-          orElse: () => throw Exception('Asset not found: $assetName'),
+          orElse: () =>
+              throw UserFacingFormatException('Asset not found: $assetName'),
         );
       } else {
         targetAsset = assets.firstWhere(
           (asset) => (asset['name'] as String).endsWith('.zip'),
-          orElse: () => throw Exception('No .zip asset found in release'),
+          orElse: () => throw const UserFacingFormatException(
+            'No .zip asset found in release',
+          ),
         );
       }
 
@@ -426,8 +465,12 @@ class WebUIStorage {
     }
   }
 
-  Future<void> downloadRemoteSkins() async {
+  Future<void> downloadRemoteSkins() => _remoteDownload ??=
+      _downloadRemoteSkins().whenComplete(() => _remoteDownload = null);
+
+  Future<void> _downloadRemoteSkins() async {
     final sources = await _getRemoteWebUISources();
+    var failures = const <({String item, Object error})>[];
     for (final sourceConfig in sources) {
       try {
         final type = sourceConfig['type'] as String;
@@ -467,6 +510,10 @@ class WebUIStorage {
             _log.warning('Unknown remote source type: $type');
         }
       } catch (e, st) {
+        failures = [
+          ...failures,
+          (item: '${sourceConfig['repo'] ?? sourceConfig['url']}', error: e),
+        ];
         _log.warning(
           'Failed to download remote skin from $sourceConfig',
           e,
@@ -474,19 +521,36 @@ class WebUIStorage {
         );
       }
     }
+    if (failures.isNotEmpty) {
+      throw RemoteUpdateException(
+        attemptedCount: sources.length,
+        failures: failures,
+      );
+    }
   }
 
   Future<void> downloadRemoteSkinsAndRescan() async {
-    await downloadRemoteSkins();
-    await _scanInstalledSkins();
+    try {
+      await downloadRemoteSkins();
+    } finally {
+      await _scanInstalledSkins();
+    }
   }
 
-  Future<void> updateAllSkins() async {
+  Future<void> updateAllSkins() => _updateCheck.value ??= _updateAllSkins()
+      .whenComplete(() => _updateCheck.value = null);
+
+  Future<void> _updateAllSkins() async {
     _log.info('Starting update check for all skins');
+    var failures = const <({String item, Object error})>[];
+    var attemptedCount = 0;
 
     try {
       await downloadRemoteSkins();
-    } catch (e, st) {
+      attemptedCount = (await _getRemoteWebUISources()).length;
+    } on RemoteUpdateException catch (e, st) {
+      attemptedCount = e.attemptedCount;
+      failures = [...failures, ...e.failures];
       _log.warning('Failed to update remote-bundled skins', e, st);
     }
 
@@ -501,6 +565,15 @@ class WebUIStorage {
     for (final entry in userSkins) {
       final skinId = entry.key;
       final sourceUrl = entry.value.sourceUrl!;
+      if (!sourceUrl.startsWith('github_release:') &&
+          !sourceUrl.startsWith('github_branch:') &&
+          !sourceUrl.startsWith('http')) {
+        _log.fine(
+          'Skipping skin "$skinId" with unsupported source type: $sourceUrl',
+        );
+        continue;
+      }
+      attemptedCount++;
 
       try {
         if (sourceUrl.startsWith('github_release:')) {
@@ -542,18 +615,21 @@ class WebUIStorage {
             sourceUrl,
             markAsRemoteBundled: false,
           );
-        } else {
-          _log.fine(
-            'Skipping skin "$skinId" with unsupported source type: $sourceUrl',
-          );
         }
       } catch (e, st) {
+        failures = [...failures, (item: skinId, error: e)];
         _log.warning('Failed to update skin "$skinId" from $sourceUrl', e, st);
       }
     }
 
     await _scanInstalledSkins();
     _log.info('Finished update check for all skins');
+    if (failures.isNotEmpty) {
+      throw RemoteUpdateException(
+        attemptedCount: attemptedCount,
+        failures: failures,
+      );
+    }
   }
 
   Future<void> _installFromGitHubRelease(
@@ -569,19 +645,7 @@ class WebUIStorage {
 
       _log.fine('Fetching GitHub release info from: $apiUrl');
 
-      final releaseResponse = await http.get(
-        Uri.parse(apiUrl),
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Decent-WebUI',
-        },
-      );
-
-      if (releaseResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to fetch GitHub release: ${releaseResponse.statusCode}',
-        );
-      }
+      final releaseResponse = await _getGitHubRelease(apiUrl);
 
       final dynamic releaseData = includePrerelease
           ? (jsonDecode(releaseResponse.body) as List).first
@@ -600,12 +664,15 @@ class WebUIStorage {
       if (assetName != null) {
         targetAsset = assets.firstWhere(
           (asset) => asset['name'] == assetName,
-          orElse: () => throw Exception('Asset not found: $assetName'),
+          orElse: () =>
+              throw UserFacingFormatException('Asset not found: $assetName'),
         );
       } else {
         targetAsset = assets.firstWhere(
           (asset) => (asset['name'] as String).endsWith('.zip'),
-          orElse: () => throw Exception('No .zip asset found in release'),
+          orElse: () => throw const UserFacingFormatException(
+            'No .zip asset found in release',
+          ),
         );
       }
 
@@ -634,9 +701,7 @@ class WebUIStorage {
 
       final assetResponse = await http.get(Uri.parse(downloadUrl));
       if (assetResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to download asset: ${assetResponse.statusCode}',
-        );
+        throw remoteHttpError(assetResponse.statusCode);
       }
 
       final tempDir = await Directory(
@@ -722,7 +787,7 @@ class WebUIStorage {
 
       final response = await http.get(Uri.parse(url));
       if (response.statusCode != 200) {
-        throw Exception('Failed to download: ${response.statusCode}');
+        throw remoteHttpError(response.statusCode);
       }
 
       final tempDir = await Directory(
@@ -1120,8 +1185,8 @@ class WebUIStorage {
     }
 
     if (!isSafePathComponent(skinId)) {
-      throw FormatException(
-        'Unsafe skin id "$skinId": must be a single safe path component',
+      throw const UserFacingFormatException(
+        'Unsafe skin id: must be a single safe path component',
       );
     }
 

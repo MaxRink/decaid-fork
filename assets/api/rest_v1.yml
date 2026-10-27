@@ -117,6 +117,25 @@ paths:
           schema:
             type: boolean
             default: true
+        - name: connectPreferredScaleEarly
+          description: >
+            Opt-in preferred primary scale reconnect, only with connect=true.
+            When a non-Bengle machine is connected and ownership is resolved,
+            the primary scale slot is empty, and a preferred scale is configured,
+            a matching sighting requests scan termination. Connection begins only
+            after successful scan teardown, without restarting full discovery.
+            Pending machine/selection work, occupied slots, auxiliary claims,
+            and sleeping-scale restrictions disable the shortcut. Otherwise the
+            normal full explicit scan applies. Failed or uncertain BLE teardown
+            never starts an early connection. If an early-stop request fails but
+            the scan later completes normally with BLE ownership released, normal
+            post-scan connection policy applies. Unrelated discovery failures do
+            not block a confirmed BLE handoff. Independent of quick; does not affect
+            automatic startup. Opt-in is retained when connect requests coalesce.
+          in: query
+          schema:
+            type: boolean
+            default: false
         - name: quick
           description: If true, Decaid returns an empty array immediately while the same scan-first policy continues in the background, after any post-wake deferral has elapsed. Useful when polling for device updates manually.
           in: query
@@ -618,7 +637,8 @@ paths:
     get:
       summary: Get LED strip configuration
       description: |
-        Read the current LED strip configuration (all 3 zones × 2 modes)
+        Read only the stored LED strip configuration (all 3 zones × 2 modes),
+        never live preview state,
         from the firmware-persisted palette registers. The state is
         hydrated from the machine once per connection; if hydration has
         not succeeded (no black is ever fabricated as authoritative
@@ -685,6 +705,87 @@ paths:
           description: Machine connected but does not support LED strip
         "503":
           description: Machine write queue is full
+        "500":
+          description: No machine was connected, the machine changed during the write, or the write failed
+
+  /api/v1/machine/ledStrip/preview:
+    post:
+      summary: Show colours on the strips without storing them
+      description: |
+        Writes the firmware's LIVE strip registers, which light the strips at
+        once and are recomputed from the stored palette at the next sleep or
+        wake transition or at boot. The four stored palette registers are never
+        mutated by preview; GET /api/v1/machine/ledStrip remains stored-palette-only.
+        Volatility is guaranteed by firmware rheasman/Bengle#114 (PERM_RW on the
+        live pair, while stored rows remain PERM_RWD). There is no firmware-build
+        gate: on pre-#114 firmware each changed preview frame still flash-writes
+        the live registers. Addresses and 4-byte payloads are unchanged.
+
+        This is the only way to show an ASLEEP colour on an awake machine: a
+        stored write is kept and not lit, because the firmware applies a stored
+        colour only when the machine is already in the state it belongs to.
+
+        Name at least one strip. Each supplied colour must be a string of
+        exactly 12 hexadecimal characters (16-bit RRRRGGGGBBBB, case-insensitive).
+        Null, invalid characters, and shorter or longer strings return 400 before
+        reserving a machine-write queue entry. Returns 404 when the connected
+        machine is not a Bengle.
+      tags: [Machine]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              anyOf:
+                - required: [frontStrip]
+                - required: [backStrip]
+              properties:
+                frontStrip:
+                  type: string
+                  minLength: 12
+                  maxLength: 12
+                  pattern: '^[0-9a-fA-F]{12}$'
+                  description: 16-bit RRRRGGGGBBBB
+                backStrip:
+                  type: string
+                  minLength: 12
+                  maxLength: 12
+                  pattern: '^[0-9a-fA-F]{12}$'
+                  description: 16-bit RRRRGGGGBBBB
+              example: { frontStrip: "FF00D900A000" }
+      responses:
+        "202":
+          description: Preview accepted
+        "400":
+          description: Body is not a JSON object, names neither strip, or a supplied colour is not a string of exactly 12 hexadecimal characters
+        "404":
+          description: Machine connected but does not support LED strip
+        "503":
+          description: Machine write queue is full
+        "500":
+          description: No machine was connected, the machine changed during the write, or the write failed
+
+  /api/v1/machine/ledStrip/preview/clear:
+    post:
+      summary: End a preview and restore the stored palette
+      description: |
+        Refreshes the stored palette from the machine, then unconditionally writes
+        both live registers for its current awake/sleep phase without mutating the
+        stored palette. If the phase changes during restoration, restores again
+        for the new phase before returning success, up to five restore passes.
+        Returns 503 if the phase did not settle within those passes.
+        A preview otherwise stands until the next sleep or wake transition,
+        which may be hours away. Returns 404 when the connected machine is not
+        a Bengle.
+      tags: [Machine]
+      responses:
+        "202":
+          description: Preview cleared
+        "404":
+          description: Machine connected but does not support LED strip
+        "503":
+          description: Machine write queue is full, the stored palette or machine state is not available yet (hydration failed or has not completed), or the awake/sleep phase did not settle after five restore passes; retrying after hydration or when the phase settles may succeed
         "500":
           description: No machine was connected, the machine changed during the write, or the write failed
 
@@ -821,7 +922,17 @@ paths:
                 $ref: "#/components/schemas/De1SettingsResponse"
     post:
       summary: Set machine settings
-      description: set additional settings on the machine, each setting can be set individually
+      description: |
+        Set additional settings on the machine, each setting can be set individually.
+        Fan values written through this API are retained per machine and reapplied after
+        reconnect; 55 is used until a value is written (DE1 clamps it to 50). Values are
+        persisted locally across app restarts in a bounded map of 32 machines, evicting
+        the oldest-updated entry. A connection captures the raw handshake serial when valid,
+        otherwise its device ID; account-resolved effective serials are never used for this
+        bucket. Raw identity changes across connections do not migrate buckets, while
+        account-only effective identity changes within a connection leave the bucket fixed.
+        If neither raw serial nor device ID is available, defaults are used and no retained
+        entry is created.
       tags: [Machine]
       requestBody:
         required: true
@@ -853,7 +964,18 @@ paths:
                 $ref: "#/components/schemas/De1AdvancedSettingsResponse"
     post:
       summary: Set advanced machine settings
-      description: Set advanced settings on the machine, each setting can be sent separately
+      description: |
+        Set advanced settings on the machine, each setting can be sent separately.
+        Refill-kit values written through this API are retained per machine and reapplied
+        after reconnect; auto is used until a value is written. Values are persisted locally
+        across app restarts in a bounded map of 32 machines, evicting the oldest-updated
+        entry. A connection captures the raw handshake serial when valid, otherwise its
+        device ID; account-resolved effective serials are never used for this bucket. Raw
+        identity changes across connections do not migrate buckets, while account-only
+        effective identity changes within a connection leave the bucket fixed. If neither
+        raw serial nor device ID is available, defaults are used and no retained entry is
+        created. The connect-time
+        detection read and firmware handoff remain separate from this override.
       tags: [Machine]
       requestBody:
         required: true
@@ -877,7 +999,8 @@ paths:
       description: |
         Reapplies a baseline set of machine settings (fan threshold, heater idle temp,
         heater phase 1/2 flows, heater phase 2 timeout, refill kit auto mode,
-        flow estimation multiplier, steam purge mode). Profile and workflow are not touched.
+        flow estimation multiplier, steam purge mode), and clears the retained fan/refill
+        overrides for the connected machine only. Profile and workflow are not touched.
       tags: [Machine]
       responses:
         "202":
@@ -1304,7 +1427,7 @@ paths:
   /api/v1/grinder/info:
     get:
       summary: Get connected grinder information
-      description: Returns runtime identity, unchanged capabilities, optional effective control descriptors and host-built available plugin surfaces. Runtime identity is separate from persisted grinder records under /api/v1/grinders.
+      description: Returns runtime identity, unchanged command capabilities, optional observation declarations, effective control descriptors and host-built available plugin surfaces. Runtime identity is separate from persisted grinder records under /api/v1/grinders.
       tags: [Grinder]
       responses:
         "200":
@@ -3412,6 +3535,11 @@ paths:
         after stripping the optional leading v. When the release carries several
         .zip assets, assetName must name the one to install. Downgrades are
         rejected; remove the plugin first to go back to an older version.
+        Download failures use plain-language error messages; transport details
+        remain in application logs. Clients may retry with the same options.
+        Malformed downloaded data and package manifests return HTTP 400 with
+        plain-language validation errors, without parser diagnostics or source snippets.
+        This includes missing or incorrectly typed release fields and asset entries.
       tags: [Plugins]
       requestBody:
         required: true
@@ -3464,6 +3592,10 @@ paths:
         package, and installs it. The resolved commit is stored and later drives
         updates, so a branch-backed plugin updates even when its manifest
         version does not change.
+        Download failures use plain-language error messages rather than raw
+        transport exceptions.
+        Invalid GitHub commit response structures return HTTP 400 with
+        plain-language validation guidance and no response-body snippets.
       tags: [Plugins]
       requestBody:
         required: true
@@ -3514,6 +3646,8 @@ paths:
         installed when the candidate keeps the same permissions or fewer, and
         recorded as a pendingUpdate when it asks for more. One plugin failing
         does not stop the others.
+        After all items are processed, any failure (including partial completion)
+        returns HTTP 500 with a plain-language error. Successful updates are kept.
       tags: [Plugins]
       responses:
         "200":
@@ -3526,7 +3660,7 @@ paths:
                   message:
                     type: string
         "500":
-          description: The update check could not run
+          description: The update check could not run or some items failed
           content:
             application/json:
               schema:
@@ -4252,7 +4386,12 @@ paths:
   /api/v1/webui/skins/update:
     post:
       summary: Check for skin updates
-      description: Triggers an update check for all skins from their remote sources (GitHub releases, branches). Skins with newer versions available will be downloaded and updated.
+      description: >
+        Triggers an update check for all skins from their remote sources
+        (GitHub releases, branches). Skins with newer versions available are
+        downloaded and updated. Every item is attempted; any failure, including
+        partial completion, returns HTTP 500 with a plain-language error.
+        Successful updates are retained.
       tags: [WebUI]
       responses:
         "200":
@@ -4266,7 +4405,7 @@ paths:
                     type: string
                     example: "Skin update check completed"
         "500":
-          description: Update check failed
+          description: Update check failed or completed only partially; error contains a plain-language message
 
   /api/v1/webui/server/status:
     get:
@@ -5592,6 +5731,8 @@ paths:
         403; a path outside the allowed prefix gets 403; no linked account gets
         401. A caller's first linked-account request pauses for native consent;
         denial or a 30-second timeout gets 403 before any upstream request.
+        Host-side connection failures return HTTP 500 with a plain-language
+        error field. Upstream HTTP statuses and bodies remain unchanged.
       tags: [Account]
       parameters:
         - name: endpoint
@@ -5636,6 +5777,8 @@ paths:
         403. Other rejection rules match the GET form (401 unknown token / no
         linked account; 403 unscoped, disallowed path, or account consent not
         granted).
+        Host-side connection failures return HTTP 500 with a plain-language
+        error field. Upstream HTTP statuses and bodies remain unchanged.
       tags: [Account]
       parameters:
         - name: endpoint
@@ -5679,6 +5822,8 @@ paths:
       description: >
         Same as the POST form but forwards a PUT. Requires a token scoped
         `account:proxy:write`.
+        Host-side connection failures return HTTP 500 with a plain-language
+        error field, as in the GET and POST forms.
       tags: [Account]
       parameters:
         - name: endpoint
@@ -5733,6 +5878,9 @@ paths:
         middleware handles. Derek is public knowledge-base data, so this route
         needs no authentication. Request validation, rate limiting, and error
         shapes are Derek's — the upstream status and body are relayed verbatim.
+        If the host cannot establish the upstream connection, it instead returns
+        HTTP 500 with a plain-language JSON error. Active streams are not
+        buffered or rewritten.
       tags: [System]
       requestBody:
         description: >
@@ -5828,6 +5976,13 @@ components:
           items:
             type: string
             enum: [startStop, grindSetting, rpmControl]
+        observations:
+          type: array
+          uniqueItems: true
+          description: Declared read-only observations, independent of command capabilities. Omitted when none are declared; declarations do not imply a currently available value or enable controls.
+          items:
+            type: string
+            enum: [setting, rpm]
         controls:
           type: object
           additionalProperties: false
@@ -5932,6 +6087,13 @@ components:
           type: integer
           minimum: 0
           description: Present only when rpmControl is declared and published.
+        observedSetting:
+          type: string
+          description: Explicit setting observation, independent of grindSetting command support. Omitted when unavailable in this snapshot; never reuse a previous value.
+        observedRpm:
+          type: integer
+          minimum: 0
+          description: Explicit RPM observation, independent of rpmControl command support. Omitted when unavailable in this snapshot; never reuse a previous value.
     GrinderSettingRequest:
       type: object
       required: [setting]
@@ -5991,7 +6153,7 @@ components:
         error:
           type: string
           nullable: true
-          description: Set while phase is error.
+          description: Plain-language failure guidance while phase is error; no raw transport exception or internal URL.
       required:
         - phase
         - currentVersion
@@ -6791,6 +6953,7 @@ components:
         fan:
           type: integer
           nullable: true
+          description: Fan threshold; retained per machine and reapplied after reconnect. Default is 55 (DE1 clamps it to 50) until a value is written.
         flushTemp:
           type: integer
           nullable: true
@@ -6874,9 +7037,9 @@ components:
             `MachineInfo.extra.refillKit`, which is what the machine detected
             at connect.
 
-            The override is not persisted. Decaid writes `2` (auto) at connect,
-            so a force-on or force-off selection lasts only until the machine is
-            discovered and connected again.
+            The override is retained per machine and reapplied after reconnect.
+            Decaid uses `2` (auto) until a value is written. The retained values
+            are bounded to 32 machines and reset clears only the connected machine.
 
             Any value other than `0`, `1` or `2` is rejected with `400`.
           type: integer
@@ -6909,13 +7072,15 @@ components:
             Refill kit override currently in effect: `2` = auto, `1` = force on,
             `0` = force off.
 
-            This is the configuration, not a detection result. Decaid writes `2`
-            (auto) at connect, so a machine that has not been written to since
-            reports `2` whether or not it has a kit fitted. For detection, read
-            `MachineInfo.extra.refillKit`.
+            This is the configuration, not a detection result. UnifiedDe1 reads the
+            machine's detection register at connect, writes `2` (auto) as the firmware
+            handoff, then Decaid reapplies the persisted override only when one exists.
+            With no saved override, the handoff is the only refill-kit write on connect.
+            For detection, read `MachineInfo.extra.refillKit`.
 
-            The value is served from Decaid's cache of the last override
-            written; the register is not re-read.
+            The value is served from Decaid's in-memory cache of the last successfully
+            written override; raw/direct device writes may update that cache. The register
+            is not re-read for this response.
           type: integer
           enum: [0, 1, 2]
     De1CalibrationRequest:
@@ -7802,6 +7967,13 @@ components:
                 items:
                   type: string
                   enum: [battery, flow, timerTelemetry, tare, timerControl, displayControl, disconnectToSleep, startStop, grindSetting, rpmControl]
+              observations:
+                type: array
+                uniqueItems: true
+                description: Grinder-only explicit observations, independent of command capabilities. Unsupported names and declarations on other driver types are rejected. Does not grant write support or expose controls. Omission declares no observations.
+                items:
+                  type: string
+                  enum: [setting, rpm]
               controls:
                 type: object
                 additionalProperties: false
@@ -8026,7 +8198,7 @@ components:
         lastError:
           type: string
           nullable: true
-          description: Why the most recent update check or install failed
+          description: Plain-language explanation of the most recent update failure; technical details remain in application logs
 
     PluginPendingUpdate:
       type: object
