@@ -1,3 +1,4 @@
+import 'package:reaprime/src/models/device/device_identity.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
@@ -10,6 +11,8 @@ import 'package:reaprime/src/settings/sleep_timeout_preference.dart';
 import 'package:reaprime/src/services/telemetry/telemetry_service.dart';
 
 import 'settings_service.dart';
+
+final _log = Logger('Settings');
 
 class SettingsController with ChangeNotifier {
   SettingsController(this._settingsService);
@@ -48,6 +51,9 @@ class SettingsController with ChangeNotifier {
 
   bool _automaticUpdateCheck = true;
 
+  bool _requireExtensionManagementAuthorization = true;
+  Future<void> _extensionManagementAuthorizationOps = Future.value();
+
   UpdateChannel _updateChannel = UpdateChannel.stable;
 
   bool _telemetryConsent = false;
@@ -68,6 +74,9 @@ class SettingsController with ChangeNotifier {
   bool _keepAwake = true;
   bool _onboardingCompleted = false;
   bool _accountStepSeen = false;
+  bool _shotUploadStepSeen = false;
+  bool _shotUploadOptIn = false;
+  bool? _shotUploadPendingDecision;
   bool _androidWarningDismissed = false;
   bool _showSkinExitInstructions = true;
   bool _enableSimulatedWebViews = false;
@@ -93,6 +102,8 @@ class SettingsController with ChangeNotifier {
   String? get preferredGrinderDeviceId => _preferredGrinderDeviceId;
   String get defaultSkinId => _defaultSkinId;
   bool get automaticUpdateCheck => _automaticUpdateCheck;
+  bool get requireExtensionManagementAuthorization =>
+      _requireExtensionManagementAuthorization;
   UpdateChannel get updateChannel => _updateChannel;
   bool get telemetryConsent => _telemetryConsent;
   bool get telemetryPromptShown => _telemetryPromptShown;
@@ -107,6 +118,9 @@ class SettingsController with ChangeNotifier {
   bool get lowBatteryBrightnessLimit => _lowBatteryBrightnessLimit;
   bool get keepAwake => _keepAwake;
   bool get onboardingCompleted => _onboardingCompleted;
+  bool get shotUploadStepSeen => _shotUploadStepSeen;
+  bool get shotUploadOptIn => _shotUploadOptIn;
+  bool? get shotUploadPendingDecision => _shotUploadPendingDecision;
   bool get accountStepSeen => _accountStepSeen;
   bool get androidWarningDismissed => _androidWarningDismissed;
   bool get showSkinExitInstructions => _showSkinExitInstructions;
@@ -118,6 +132,7 @@ class SettingsController with ChangeNotifier {
   set telemetryService(TelemetryService service) => _telemetryService = service;
 
   Future<void> loadSettings() async {
+    await currentRequireExtensionManagementAuthorization();
     _themeMode = await _settingsService.themeMode();
     _gatewayMode = await _settingsService.gatewayMode();
     _logLevel = await _settingsService.logLevel();
@@ -157,6 +172,10 @@ class SettingsController with ChangeNotifier {
     _keepAwake = await _settingsService.keepAwake();
     _onboardingCompleted = await _settingsService.onboardingCompleted();
     _accountStepSeen = await _settingsService.accountStepSeen();
+    _shotUploadStepSeen = await _settingsService.shotUploadStepSeen();
+    _shotUploadOptIn = await _settingsService.shotUploadOptIn();
+    _shotUploadPendingDecision = await _settingsService
+        .shotUploadPendingDecision();
     _androidWarningDismissed = await _settingsService.androidWarningDismissed();
     _showSkinExitInstructions = await _settingsService
         .showSkinExitInstructions();
@@ -309,6 +328,7 @@ class SettingsController with ChangeNotifier {
   }
 
   Future<void> setPreferredMachineId(String? machineId) async {
+    if (machineId != null && isEphemeralDeviceIdentity(machineId)) return;
     if (machineId == _preferredMachineId) {
       return;
     }
@@ -324,6 +344,7 @@ class SettingsController with ChangeNotifier {
   }
 
   Future<void> setPreferredScaleId(String? scaleId) async {
+    if (scaleId != null && isEphemeralDeviceIdentity(scaleId)) return;
     if (scaleId == _preferredScaleId) {
       return;
     }
@@ -355,6 +376,45 @@ class SettingsController with ChangeNotifier {
     _automaticUpdateCheck = value;
     await _settingsService.setAutomaticUpdateCheck(value);
     notifyListeners();
+  }
+
+  Future<bool> currentRequireExtensionManagementAuthorization() {
+    final read = _extensionManagementAuthorizationOps.then((_) async {
+      bool stored;
+      try {
+        stored = await _settingsService
+            .requireExtensionManagementAuthorization();
+      } catch (error, stackTrace) {
+        _log.warning(
+          'Reading requireExtensionManagementAuthorization failed; keeping '
+          'extension management protected',
+          error,
+          stackTrace,
+        );
+        stored = true;
+      }
+      if (stored != _requireExtensionManagementAuthorization) {
+        _requireExtensionManagementAuthorization = stored;
+        notifyListeners();
+      }
+      return stored;
+    });
+    _extensionManagementAuthorizationOps = read.then(
+      (_) {},
+      onError: (Object _) {},
+    );
+    return read;
+  }
+
+  Future<void> setRequireExtensionManagementAuthorization(bool value) {
+    final write = _extensionManagementAuthorizationOps.then((_) async {
+      if (value == _requireExtensionManagementAuthorization) return;
+      await _settingsService.setRequireExtensionManagementAuthorization(value);
+      _requireExtensionManagementAuthorization = value;
+      notifyListeners();
+    });
+    _extensionManagementAuthorizationOps = write.catchError((Object _) {});
+    return write;
   }
 
   Future<void> setUpdateChannel(UpdateChannel channel) async {
@@ -469,6 +529,44 @@ class SettingsController with ChangeNotifier {
     if (value == _accountStepSeen) return;
     _accountStepSeen = value;
     await _settingsService.setAccountStepSeen(value);
+    notifyListeners();
+  }
+
+  // Persistence before mutation on purpose: if the write throws, the field must
+  // not already hold the new value, or the onboarding retry short-circuits on
+  // the equality guard above and the write is skipped forever.
+  Future<void> setShotUploadStepSeen(bool value) async {
+    if (value == _shotUploadStepSeen) return;
+    await _settingsService.setShotUploadStepSeen(value);
+    _shotUploadStepSeen = value;
+    notifyListeners();
+  }
+
+  Future<void> setShotUploadOptIn(bool value) async {
+    if (value == _shotUploadOptIn) return;
+    await _settingsService.setShotUploadOptIn(value);
+    _shotUploadOptIn = value;
+    notifyListeners();
+  }
+
+  Future<void> setShotUploadDecision(bool value) async {
+    await _settingsService.setShotUploadDecision(value);
+    _shotUploadPendingDecision = value;
+    _shotUploadStepSeen = true;
+    _shotUploadOptIn = value;
+    notifyListeners();
+  }
+
+  Future<void> clearShotUploadPendingDecision() async {
+    await _settingsService.clearShotUploadPendingDecision();
+    _shotUploadPendingDecision = null;
+    _shotUploadOptIn = false;
+    notifyListeners();
+  }
+
+  Future<void> clearShotUploadOptIn() async {
+    await _settingsService.clearShotUploadOptIn();
+    _shotUploadOptIn = false;
     notifyListeners();
   }
 

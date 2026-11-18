@@ -7,8 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:uuid/uuid.dart';
 import 'package:reaprime/src/services/apk_installer.dart';
+import 'package:reaprime/src/services/apk_install_coordinator.dart';
+import 'package:reaprime/src/services/github_credentials.dart';
 import 'package:reaprime/src/services/github_rate_limit.dart';
+import 'package:reaprime/src/services/github_request.dart';
 import 'package:reaprime/src/util/remote_error.dart';
+
+export 'apk_install_coordinator.dart'
+    show ApkInstallOutcome, InvalidApkException;
 
 class UpdateInfo {
   final String version;
@@ -45,25 +51,15 @@ class UpdateInfo {
   }
 }
 
-class UpdateCheckException extends RemoteServiceException {
-  final String message;
-
-  final bool rateLimited;
-
-  final DateTime? resetAt;
-
+class UpdateCheckException extends GithubRequestException {
   UpdateCheckException(
-    this.message, {
-    int statusCode = 0,
-    this.rateLimited = false,
-    this.resetAt,
-  }) : super(
-         statusCode,
-         remoteHttpError(rateLimited ? 429 : statusCode).userMessage,
-       );
-
-  @override
-  String toString() => message;
+    super.message, {
+    super.statusCode,
+    super.rateLimited,
+    super.resetAt,
+    super.credentialRejected,
+    super.userMessageOverride,
+  });
 }
 
 enum UpdateChannel { stable, beta }
@@ -74,19 +70,24 @@ class AndroidUpdater {
   final String _repo;
   final http.Client _httpClient;
   final ApkInstaller _apkInstaller;
+  final bool _isAndroid;
+  ApkInstallCoordinator? _installCoordinator;
+  bool _disposed = false;
   final GithubRateLimit _rateLimit;
+  final GithubCredentialProvider? credentials;
 
   AndroidUpdater({
-    required String owner,
-    required String repo,
+    required this._owner,
+    required this._repo,
     http.Client? httpClient,
     ApkInstaller? apkInstaller,
+    bool? platformIsAndroid,
     DateTime Function()? now,
     GithubRateLimit? rateLimit,
-  }) : _owner = owner,
-       _rateLimit = rateLimit ?? GithubRateLimit(now: now),
-       _repo = repo,
+    this.credentials,
+  }) : _rateLimit = rateLimit ?? GithubRateLimit(now: now),
        _httpClient = httpClient ?? http.Client(),
+       _isAndroid = platformIsAndroid ?? Platform.isAndroid,
        _apkInstaller = apkInstaller ?? ApkInstaller();
 
   String get _releasesUrl =>
@@ -96,79 +97,17 @@ class AndroidUpdater {
     String currentVersion, {
     UpdateChannel channel = UpdateChannel.stable,
   }) async {
-    final cooldownEnd = _rateLimit.resetAt;
-    if (cooldownEnd != null) {
-      throw UpdateCheckException(
-        'GitHub rate limit active; update checks resume at '
-        '${cooldownEnd.toIso8601String()}',
-        rateLimited: true,
-        resetAt: cooldownEnd,
-      );
-    }
     try {
       _log.info(
         'Checking for updates on $channel channel (current: $currentVersion)',
       );
 
-      final response = await _httpClient.get(
-        Uri.parse(_releasesUrl),
-        headers: const {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Decaid',
-        },
+      final response = await githubGet(
+        _releasesUrl,
+        rateLimit: _rateLimit,
+        client: _httpClient,
+        credentials: credentials,
       );
-
-      if (response.statusCode != 200) {
-        _rateLimit.recordIfLimited(response);
-        var message = 'Failed to fetch releases: HTTP ${response.statusCode}';
-        if (response.statusCode == 403 || response.statusCode == 429) {
-          final remaining = response.headers['x-ratelimit-remaining'];
-          final body = response.body
-              .substring(
-                0,
-                response.body.length > 200 ? 200 : response.body.length,
-              )
-              .replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ')
-              .trim();
-          if (remaining == '0') {
-            final reset = int.tryParse(
-              response.headers['x-ratelimit-reset'] ?? '',
-            );
-            final resetDate =
-                reset == null || reset < 0 || reset > 8640000000000
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(
-                    reset * 1000,
-                    isUtc: true,
-                  );
-            final resetAt = resetDate == null
-                ? 'reset time unavailable'
-                : 'resets at ${resetDate.toIso8601String()}';
-            final quotaContext = 'rate limit remaining: 0; $resetAt';
-            if (body.isNotEmpty) {
-              final suffix = response.body.length > 200 ? '…' : '';
-              message =
-                  'GitHub rejected releases request (HTTP ${response.statusCode}): $body$suffix '
-                  '($quotaContext)';
-            } else {
-              message =
-                  'GitHub rejected releases request (HTTP ${response.statusCode}; $quotaContext)';
-            }
-          } else if (body.isNotEmpty) {
-            final suffix = response.body.length > 200 ? '…' : '';
-            message =
-                'GitHub rejected releases request (HTTP ${response.statusCode}): $body$suffix';
-          }
-        }
-        throw UpdateCheckException(
-          message,
-          statusCode: response.statusCode,
-          rateLimited:
-              (response.statusCode == 403 || response.statusCode == 429) &&
-              response.headers['x-ratelimit-remaining'] == '0',
-          resetAt: _rateLimit.resetAt,
-        );
-      }
 
       final releases = json.decode(response.body) as List<dynamic>;
 
@@ -201,6 +140,16 @@ class AndroidUpdater {
         _log.info('Already on latest version');
         return null;
       }
+    } on GithubRequestException catch (e, stackTrace) {
+      _log.severe('Error checking for updates', e, stackTrace);
+      throw UpdateCheckException(
+        e.message,
+        statusCode: e.statusCode,
+        rateLimited: e.rateLimited,
+        resetAt: e.resetAt,
+        credentialRejected: e.credentialRejected,
+        userMessageOverride: e.userMessage,
+      );
     } catch (e, stackTrace) {
       _log.severe('Error checking for updates', e, stackTrace);
       rethrow;
@@ -262,28 +211,27 @@ class AndroidUpdater {
     }
   }
 
-  Future<bool> installUpdate(String apkPath) async {
-    if (!Platform.isAndroid) {
+  Future<bool> canInstallPackages() async =>
+      _isAndroid && await _apkInstaller.canInstallPackages();
+
+  Future<bool> isDownloadedApkValid(String path) =>
+      _apkInstaller.isValidApk(path);
+
+  Future<ApkInstallOutcome> installUpdate(
+    String apkPath, {
+    bool requestPermission = true,
+  }) async {
+    if (!_isAndroid) {
       throw UnsupportedError('APK installation is only supported on Android');
     }
-
-    try {
-      _log.info('Installing update from $apkPath');
-
-      final canInstall = await _apkInstaller.canInstallPackages();
-      if (!canInstall) {
-        _log.warning(
-          'No permission to install packages, requesting permission',
-        );
-        await _apkInstaller.requestInstallPermission();
-        return false;
-      }
-
-      return await _apkInstaller.installApk(apkPath);
-    } catch (e, stackTrace) {
-      _log.severe('Error installing update', e, stackTrace);
-      rethrow;
-    }
+    if (_disposed) return ApkInstallOutcome.cancelled;
+    final valid = await isDownloadedApkValid(apkPath);
+    if (_disposed) return ApkInstallOutcome.cancelled;
+    if (!valid) throw const InvalidApkException();
+    final coordinator = _installCoordinator ??= ApkInstallCoordinator(
+      _apkInstaller,
+    );
+    return coordinator.install(apkPath, requestPermission: requestPermission);
   }
 
   UpdateInfo? _parseRelease(Object? release, UpdateChannel channel) {
@@ -302,9 +250,8 @@ class AndroidUpdater {
 
   bool _isNewerVersion(String newVersion, String currentVersion) {
     try {
-      return Version.parse(
-            newVersion,
-          ).compareTo(Version.parse(currentVersion)) >
+      return Version.parse(newVersion)
+              .compareTo(Version.parse(currentVersion)) >
           0;
     } catch (e) {
       _log.warning('Error comparing versions: $e');
@@ -313,6 +260,8 @@ class AndroidUpdater {
   }
 
   void dispose() {
+    _disposed = true;
+    _installCoordinator?.dispose();
     _httpClient.close();
   }
 }

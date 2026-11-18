@@ -4,7 +4,8 @@ Read this when debugging BLE errors, diagnosing platform-specific crashes, inves
 
 ## Source Of Truth
 
-- Error filter: `lib/src/services/crashlytics_error_filter.dart`.
+- Framework error filter: `lib/src/services/telemetry/crashlytics_error_filter.dart`.
+- Log forwarding filter: `lib/src/services/telemetry/telemetry_forwarder_filter.dart`.
 - Logging: `package:logging`, configured in `main.dart`.
 
 ## General Debugging Principles
@@ -15,6 +16,25 @@ Read this when debugging BLE errors, diagnosing platform-specific crashes, inves
 - **Simulate mode:** Reproduce without hardware using `--dart-define=simulate=1`. Mock devices are deterministic — use them to isolate whether an issue is transport or logic.
 - **`simulate=0` (debug-on-real):** `--dart-define=simulate=0` enables debug routes and disables Firebase/telemetry while keeping real BLE/USB hardware. Use for temporary tuning builds where `/api/v1/debug/*` must be reachable against real devices. Must not be shipped to users.
 - **Stream debugging:** Enable `Logger('ShotState')` for structured shot decisions. `Logger('Ble')` for BLE operations.
+
+## Recoverable diagnostics versus exception reports
+
+`shouldForwardToTelemetry` excludes exception-free `StatusPublisher` records:
+`emitError` logs connection-state transitions, not thrown failures. These retain
+their severity and still reach the scrubbed log buffer before the telemetry
+filter runs. Inspect those diagnostics when investigating connection loops;
+the absence of a Crashlytics issue does not mean the state was not logged.
+
+Only `UserFacingFormatException`s from `DataManagement` are excluded as handled
+input failures. `ShotImporter.importJson` decodes legacy-shot files and dispatches
+objects/arrays; decoding, export-shape validation and shot-construction format
+failures use this existing user-facing type. Storage and application callbacks
+run outside that conversion boundary, including after partial batch imports.
+Plain `FormatException`s from `DataManagement` (also used for backups, exports and
+De1App operations), unexpected exceptions, and format errors from other loggers
+remain eligible. Keep the original exception and stack when logging a real
+failure so attribution stays at its source rather than the queue. Revisit these
+rules if either logger gains new responsibilities.
 
 ## Common Error Patterns
 

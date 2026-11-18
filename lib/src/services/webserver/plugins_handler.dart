@@ -53,8 +53,11 @@ final class PluginsHandler {
 
     app.post('/api/v1/plugins/update', (Request request) async {
       try {
-        await pluginSourceService.updateAllPlugins();
-        return jsonOk({'message': 'Plugin update check complete'});
+        final report = await pluginSourceService.checkForPluginUpdates();
+        return jsonOk({
+          'message': 'Plugin update check complete',
+          'results': report.results.map((r) => r.toJson()).toList(),
+        });
       } catch (e, st) {
         _log.warning('Plugin update check failed', e, st);
         return jsonError({
@@ -150,15 +153,13 @@ final class PluginsHandler {
   Future<Response> _handleInstallFromGitHubRelease(Request request) async {
     final Map<String, dynamic> json;
     try {
-      json =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      json = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
     } on RequestBodyReadException {
       rethrow;
     } catch (e) {
@@ -190,15 +191,13 @@ final class PluginsHandler {
   Future<Response> _handleInstallFromGitHubBranch(Request request) async {
     final Map<String, dynamic> json;
     try {
-      json =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      json = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
     } on RequestBodyReadException {
       rethrow;
     } catch (e) {
@@ -249,15 +248,13 @@ final class PluginsHandler {
   Future<Response> _handlePluginSourceWrite(Request request, String id) async {
     final Map<String, dynamic> json;
     try {
-      json =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: largeRequestBodyBytes,
-                  timeout: largeRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      json = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: largeRequestBodyBytes,
+          timeout: largeRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
     } on RequestBodyReadException {
       rethrow;
     } catch (e) {

@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:reaprime/src/models/errors.dart';
 import 'package:reaprime/src/services/telemetry/crashlytics_error_filter.dart';
 import 'package:reaprime/src/util/remote_error.dart';
+import 'package:reaprime/src/util/user_facing_exception.dart';
 
 const _webUiStorageLoggerName = 'WebUIStorage';
 const _skinAlreadyExistsPrefix = 'Skin already exists';
@@ -17,6 +18,14 @@ const _httpFetcherLoggers = <String>{_webUiStorageLoggerName, 'AndroidUpdater'};
 
 bool shouldForwardToTelemetry(LogRecord record) {
   if (record.level < Level.SEVERE) return false;
+
+  if (record.loggerName == 'StatusPublisher' && record.error == null) {
+    return false;
+  }
+  if (record.loggerName == 'DataManagement' &&
+      record.error is UserFacingFormatException) {
+    return false;
+  }
 
   if (record.error is DeviceNotConnectedException) return false;
   if (record.error is MmrTimeoutException) return false;

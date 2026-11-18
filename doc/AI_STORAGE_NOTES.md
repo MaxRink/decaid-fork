@@ -47,10 +47,63 @@ Gotchas:
 |-------|-------|---------|
 | Drift DB | `AppDatabase` | Shots, workflows, beans, grinders, profiles, settings |
 | `SharedPreferences` | `SharedPreferencesSettingsService` | App settings (telemetry consent, feature flags, preferences) |
+| Private `SharedPreferences` snapshot | `NotificationCenter` | Retained native notices, action descriptors, order and read status |
 | Secure store | `DecentAccountService`, `PluginLoaderService` | Account credentials, API tokens, secure plugin settings |
 | File system | `StorageService` | Data export, log files, skin assets |
 
 Keep these stores independent. A settings reset must not clear account credentials unless explicitly requested.
+
+## Native Notification Snapshot
+
+`NotificationCenter` owns `private.notificationCenter.v1`, a versioned JSON
+snapshot in SharedPreferences. `main()` restores it before constructing the
+plugin loader. It never uses the generic Hive namespace store or exposes its key
+through the skin API. No Drift schema change is involved.
+
+The snapshot includes host/plugin namespace, source identity, local ID, message,
+approved action descriptors, content revision and read status in display order.
+It excludes executable callbacks, contexts, credentials and runtime generations.
+Actions stay disabled after restoration until the current source revalidates
+them. Runtime action bindings survive read-state changes but not generation
+retirement, content replacement or removal.
+The trusted update owner revalidates retained updates before enabling View,
+Download or the explicit Skip this version action. Reading never skips a version.
+The binding's confirmation state is runtime-only and is not part of the snapshot.
+The unconfirmed host-update row offers a manual Check for updates action instead
+of its saved View/Download descriptors. It uses the existing update service;
+this control and its checking/error state are not persisted or exposed to plugins.
+
+The center serializes writes and updates visible state only after a successful
+save. Failed writes retain the previous state and expose a storage error. Invalid
+or unknown snapshots block mutations and preserve the raw stored value; there is
+no destructive reset fallback. Limits remain five notices per plugin and twenty
+plugin notices overall, plus one reserved host-update notice.
+
+Shutdown/reload preserves the snapshot. Explicit unload, disable, uninstall,
+notification-permission removal and source resolution remove
+the affected notices through the same serialized write path.
+
+The installed
+`shared_preferences_windows` 2.4.1 implementation maintains separate whole-file
+caches for legacy SharedPreferences and SharedPreferencesAsync. Notification and
+plugin writes use the legacy API while app settings use Async. Interleaved writes
+previously overwrote retained notifications, read status or a saved skipped
+version. Windows startup now calls `initializeWindowsPreferences` before either
+API is used. The Async platform adapter delegates to the existing legacy backend,
+so both APIs share its one warmed cache and file. Raw prefixed legacy keys and
+unprefixed Async keys retain their existing meanings; no migration is required.
+The shared adapter serializes reads and mutations. Failed writes restore the
+affected backend cache entries before another client can read or save them;
+reloading the legacy preferences cache alone does not undo Windows backend
+mutations. Failed backend writes/removals throw rather than claiming successful
+Async saves.
+`windows_preferences_test.dart` uses the actual Windows file backend in a temporary
+directory, interleaves both APIs, reconstructs them from disk and checks retained
+notifications, read state, skipped versions and unrelated settings. Failure tests
+also cover publication, reading, resolution, Async set/remove/clear and a settings
+write queued during a failed notification save. This does not
+provide cross-process or multi-isolate synchronization; the app's preferences
+owners run in its main isolate.
 
 ## Recovery Package Destination Rule
 
@@ -186,6 +239,33 @@ This DE1-specific conversion constraint is documented in
 ## SharedPreferences Keys
 
 Settings persist via `SharedPreferencesSettingsService`. Key prefixes are flat strings. Feature flags use the `FeatureFlag` enum + `SettingsService.featureFlag/setFeatureFlag` + `SettingsController.isFeatureFlagEnabled/setFeatureFlag`.
+
+**Extension management protection (decaid#1191).** The native `Settings >
+Security` toggle persists `requireExtensionManagementAuthorization` through
+`SettingsService`. `requireExtensionManagementAuthorization()` reads it as
+`?? false`, so an absent key means compatibility mode (the shipped default for
+a fresh install and for an upgrade from a build that never stored it) and the
+presence of an old `extensions:manage` token is never inferred as protected.
+`SettingsController.currentRequireExtensionManagementAuthorization()` wraps that
+read:
+
+- it is called fresh for every API request through the
+  `requireExtensionManagementAuthorization` callback wired in
+  `buildWebServerHandler`, and again when the app resumes, so a toggle change
+  applies without a restart;
+- it fails closed. A throwing `SharedPreferences` read resolves to `true`
+  (protected) and logs a warning; that is the opposite default from a missing
+  key on purpose, so a storage fault cannot downgrade security;
+- reads and the native write share one serialized operation queue, so an
+  overlapping refresh cannot publish a stale value and the write persists
+  before it publishes.
+
+The key is native-only. `SettingsExportSection` never emits it and import, pull
+and two-way sync never read it, so a restored backup or a peer cannot change
+the policy; `POST /api/v1/settings` ignores it as an unknown key;
+`extensionManagementSettingsKeys`, `host.localApi` and the plugin KV store
+exclude it; `GET /api/v1/settings` does not return it.
+`lib/src/settings/security_page.dart` is the only writer.
 
 **First feature flag foundation (PR #371):** "Smart Step Advance" — the pattern for all future feature flags. Flag enum, settings service get/set, controller wrapper, UI toggle in Advanced Settings.
 

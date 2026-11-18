@@ -15,6 +15,72 @@ void main() {
     tagName: 'v1.2.3',
   );
 
+  testWidgets('cancel never downloads or installs an update', (tester) async {
+    var downloadCalls = 0;
+    var installCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => UpdateDialog(
+                updateInfo: updateInfo,
+                currentVersion: '1.2.2',
+                onViewReleaseNotes: () {},
+                onDownload: (_, _) async {
+                  downloadCalls++;
+                  return '/tmp/decent.apk';
+                },
+                onInstall: (_) async {
+                  installCalls++;
+                  return ApkInstallOutcome.installerLaunched;
+                },
+              ),
+            ),
+            child: const Text('Open update'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open update'));
+    await tester.pumpAndSettle();
+    expect(downloadCalls, 0);
+    expect(installCalls, 0);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UpdateDialog), findsNothing);
+    expect(downloadCalls, 0);
+    expect(installCalls, 0);
+  });
+
+  testWidgets('download waits for a separate install confirmation', (
+    tester,
+  ) async {
+    var installCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UpdateDialog(
+          updateInfo: updateInfo,
+          currentVersion: '1.2.2',
+          onViewReleaseNotes: () {},
+          onDownload: (_, _) async => '/tmp/decent.apk',
+          onInstall: (_) async {
+            installCalls++;
+            return ApkInstallOutcome.permissionRequired;
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pumpAndSettle();
+    expect(find.text('Install'), findsOneWidget);
+    expect(installCalls, 0);
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+    expect(installCalls, 1);
+  });
+
   testWidgets('download failure offers a friendly retry', (tester) async {
     var calls = 0;
     await tester.pumpWidget(
@@ -28,7 +94,7 @@ void main() {
             if (calls == 1) throw const SocketException('private host lookup');
             return '/tmp/decent.apk';
           },
-          onInstall: (_) async => true,
+          onInstall: (_) async => ApkInstallOutcome.installerLaunched,
         ),
       ),
     );
@@ -62,7 +128,7 @@ void main() {
             onProgress(0.42);
             return download.future;
           },
-          onInstall: (_) async => true,
+          onInstall: (_) async => ApkInstallOutcome.installerLaunched,
         ),
       ),
     );
@@ -89,7 +155,7 @@ void main() {
           currentVersion: '1.2.2',
           onViewReleaseNotes: () => viewReleaseNotesCalls++,
           onDownload: (_, _) async => '/tmp/decent.apk',
-          onInstall: (_) async => true,
+          onInstall: (_) async => ApkInstallOutcome.installerLaunched,
         ),
       ),
     );
@@ -100,5 +166,78 @@ void main() {
     await tester.pump();
 
     expect(viewReleaseNotesCalls, 1);
+  });
+
+  testWidgets(
+    'permission denial is neutral and retry reuses the downloaded APK',
+    (tester) async {
+      var downloads = 0;
+      final installedPaths = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UpdateDialog(
+              updateInfo: updateInfo,
+              currentVersion: '1.2.2',
+              onViewReleaseNotes: () {},
+              onDownload: (_, _) async {
+                downloads++;
+                return '/tmp/cached.apk';
+              },
+              onInstall: (path) async {
+                installedPaths.add(path);
+                return ApkInstallOutcome.permissionRequired;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Install'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UpdateDialog), findsOneWidget);
+      final guidance = tester.widget<Text>(
+        find.textContaining('Installation is not authorized'),
+      );
+      expect(guidance.style?.color, isNull);
+      expect(find.textContaining("Couldn't"), findsNothing);
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(downloads, 1);
+      expect(installedPaths, ['/tmp/cached.apk', '/tmp/cached.apk']);
+    },
+  );
+
+  testWidgets('invalid APK is discarded and Retry downloads again', (
+    tester,
+  ) async {
+    var downloads = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UpdateDialog(
+            updateInfo: updateInfo,
+            currentVersion: '1.2.2',
+            onViewReleaseNotes: () {},
+            onDownload: (_, _) async {
+              downloads++;
+              return '/tmp/download-$downloads.apk';
+            },
+            onInstall: (_) async => throw const InvalidApkException(),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(downloads, 2);
+    expect(find.text('Install'), findsOneWidget);
   });
 }

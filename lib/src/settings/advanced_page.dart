@@ -10,7 +10,10 @@ import 'package:reaprime/src/settings/settings_controller.dart';
 import 'package:reaprime/src/settings/settings_service.dart';
 import 'package:reaprime/src/debug_feature/debug_item_list_view.dart';
 import 'package:reaprime/src/services/foreground_service.dart';
+import 'package:reaprime/src/services/github_credentials.dart';
+import 'package:reaprime/src/settings/github_token_section.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
 import 'dart:io';
 
 import 'package:reaprime/src/settings/gateway_mode.dart';
@@ -18,11 +21,12 @@ import 'package:reaprime/src/settings/gateway_mode_info_dialog.dart';
 import 'package:reaprime/src/skin_feature/simulated_webview_device.dart';
 
 class AdvancedPage extends StatelessWidget {
-  const AdvancedPage({super.key, required this.controller});
+  const AdvancedPage({super.key, required this.controller, this.credentials});
 
   static const routeName = '/advanced';
 
   final SettingsController controller;
+  final GithubCredentialProvider? credentials;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +65,6 @@ class AdvancedPage extends StatelessWidget {
                 ),
               ),
               const SettingsDivider(),
-
               SettingsTile(
                 icon: Icons.settings_remote_outlined,
                 label: 'Gateway Mode',
@@ -297,6 +300,10 @@ class AdvancedPage extends StatelessWidget {
                     exit(0);
                   },
                 ),
+              if (credentials != null) ...[
+                const SettingsDivider(),
+                GithubTokenSection(credentials: credentials!),
+              ],
             ],
           );
         },

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:reaprime/src/services/android_updater.dart';
 import 'package:reaprime/src/settings/charging_mode.dart';
@@ -23,6 +25,12 @@ class MockSettingsService extends SettingsService {
   String? _preferredGrinderDeviceId;
   String _defaultSkinId = 'streamline.js';
   bool _automaticUpdateCheck = true;
+  bool _requireExtensionManagementAuthorization = false;
+  int requireExtensionManagementAuthorizationReads = 0;
+  int requireExtensionManagementAuthorizationWrites = 0;
+  bool failRequireExtensionManagementAuthorizationRead = false;
+  bool failRequireExtensionManagementAuthorizationWrite = false;
+  Completer<void>? requireExtensionManagementAuthorizationReadGate;
   UpdateChannel _updateChannel = UpdateChannel.stable;
   DateTime? _lastUpdateCheckTime;
   bool _telemetryConsent = false;
@@ -40,6 +48,9 @@ class MockSettingsService extends SettingsService {
   bool _lowBatteryBrightnessLimit = false;
   bool _keepAwake = true;
   bool _onboardingCompleted = true;
+  bool _shotUploadStepSeen = true;
+  bool _shotUploadOptIn = false;
+  bool? _shotUploadPendingDecision;
   bool _accountStepSeen = true;
   bool _androidWarningDismissed = true;
   bool _showSkinExitInstructions = false;
@@ -133,6 +144,27 @@ class MockSettingsService extends SettingsService {
   @override
   Future<void> setAutomaticUpdateCheck(bool value) async =>
       _automaticUpdateCheck = value;
+  @override
+  Future<bool> requireExtensionManagementAuthorization() async {
+    requireExtensionManagementAuthorizationReads++;
+    final stored = _requireExtensionManagementAuthorization;
+    final gate = requireExtensionManagementAuthorizationReadGate;
+    if (gate != null) await gate.future;
+    if (failRequireExtensionManagementAuthorizationRead) {
+      throw StateError('simulated extension management policy read failure');
+    }
+    return stored;
+  }
+
+  @override
+  Future<void> setRequireExtensionManagementAuthorization(bool value) async {
+    requireExtensionManagementAuthorizationWrites++;
+    if (failRequireExtensionManagementAuthorizationWrite) {
+      throw StateError('simulated extension management policy write failure');
+    }
+    _requireExtensionManagementAuthorization = value;
+  }
+
   @override
   Future<UpdateChannel> updateChannel() async => _updateChannel;
   @override
@@ -233,6 +265,28 @@ class MockSettingsService extends SettingsService {
   @override
   Future<void> setOnboardingCompleted(bool value) async =>
       _onboardingCompleted = value;
+  @override
+  Future<bool> shotUploadStepSeen() async => _shotUploadStepSeen;
+  @override
+  Future<void> setShotUploadStepSeen(bool value) async =>
+      _shotUploadStepSeen = value;
+  @override
+  Future<bool> shotUploadOptIn() async => _shotUploadOptIn;
+  @override
+  Future<void> setShotUploadOptIn(bool value) async => _shotUploadOptIn = value;
+  @override
+  Future<void> clearShotUploadOptIn() async => _shotUploadOptIn = false;
+  @override
+  Future<bool?> shotUploadPendingDecision() async => _shotUploadPendingDecision;
+  @override
+  Future<void> setShotUploadDecision(bool value) async {
+    _shotUploadPendingDecision = value;
+    _shotUploadStepSeen = true;
+  }
+
+  @override
+  Future<void> clearShotUploadPendingDecision() async =>
+      _shotUploadPendingDecision = null;
   @override
   Future<bool> accountStepSeen() async => _accountStepSeen;
   @override

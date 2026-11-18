@@ -8,6 +8,7 @@ import 'package:reaprime/src/models/device/scan_filter.dart';
 import 'package:reaprime/src/models/device/sensor.dart';
 import 'package:reaprime/src/models/device/transport/data_transport.dart';
 import 'package:rxdart/rxdart.dart';
+
 import 'plugin_device_contract.dart';
 import 'plugin_device_surface_authority.dart';
 import 'plugin_manifest.dart';
@@ -49,6 +50,8 @@ class PluginDeviceService implements DeviceDiscoveryService {
 
   @override
   Stream<List<Device>> get devices => _devices.stream;
+
+  bool get hasRegistrations => _registrations.isNotEmpty;
 
   @override
   Future<void> initialize() async {}
@@ -333,9 +336,8 @@ class _PluginSensor implements Sensor, PluginDeviceAdapter {
     required String vendor,
     required List<DataChannel> dataChannels,
     required List<CommandDescriptor> commands,
-    required PluginDeviceInvoker invoke,
-  }) : _invoke = invoke,
-       info = SensorInfo(
+    required this._invoke,
+  }) : info = SensorInfo(
          name: name,
          vendor: vendor,
          dataChannels: dataChannels,

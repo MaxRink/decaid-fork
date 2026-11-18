@@ -37,7 +37,12 @@ For non-trivial features or fixes, write a plan in `doc/plans/`. Seek approval f
 ### Verification
 
 After every meaningful code change:
-1. Run `dart format lib test`.
+1. Format the Dart files changed since the PR's target branch (normally `origin/main`) plus untracked Dart files. If the PR targets another branch, replace `origin/main` with that branch's remote ref:
+   ```bash
+   base="$(git merge-base origin/main HEAD)"
+   { git diff --name-only --diff-filter=ACMR -z "$base" -- '*.dart'; git ls-files -z --others --exclude-standard -- '*.dart'; } | xargs -0 -r dart format --
+   ```
+   CI's `Dart format check` enforces `dart format` only on the PR's changed Dart files with the pinned SDK from `.github/workflows/pr-checks.yml`, so a repo-wide `dart format lib test` under a different local SDK produces unrelated churn and does not describe what CI checks. That pinned version (restated in `README.md` prerequisites) is authoritative; if the local formatter and CI disagree, switch SDKs rather than reformatting untouched files.
 2. Run relevant tests + `flutter analyze`. Fix immediately if anything fails.
 3. Run full `flutter test` before committing and before claiming done.
 4. Evidence before assertions — show test output, not just "tests pass."
@@ -52,6 +57,27 @@ For API/spec changes, smoke-test via `scripts/sb-dev.sh` + `curl`/`websocat`. Se
 2. **Check doc updates:** `doc/Api.md` if endpoints changed, `doc/Skins.md` if skin behavior changed, `doc/Plugins.md` if events changed, `doc/Profiles.md` if profile handling changed, `doc/DeviceManagement.md` if device flows changed.
 
 All three steps are required, not optional.
+
+## Worktrees and local verification
+
+- **A fresh worktree lacks the untracked bundled assets.** `assets/plugins/{dye2,shot-upload,dcamp}.reaplugin`
+  and `assets/bundled_skins` are listed in the tracked root `.gitignore`, so `flutter analyze` reports four
+  `asset_directory_does_not_exist` warnings and `bundled_plugin_permissions_test.dart` fails (~34 cases)
+  with or without your change. Copy them in from the main checkout (they stay untracked and the tree stays
+  clean) or state the baseline failure explicitly in the PR.
+- **Debug builds need `android/app/debug.keystore`** (ignored by `android/.gitignore`). Copy it from the main
+  checkout only if the worktree does not already have one, and never overwrite an existing keystore. Delete
+  the file after verification only if you created that copy; leave any pre-existing keystore alone.
+- **`scripts/sb-dev.sh` injects `--dart-define=simulate=1` unless you pass `--real`.** Simulate mode adds
+  mock devices (`MockDe1`, `MockBengle`, `Mock Scale`, `DebugPort`, `SensorBasket`); their behaviour is not
+  product behaviour and does not prove real-hardware behaviour. `MockDe1` supports hardware-free raw
+  WebSocket smoke testing — see `.agents/skills/decent-app/scenarios/mock-de1-raw.md`.
+- **Do not probe a request/response WebSocket with a one-shot client.** `websocat -n` and anything else
+  that closes on stdin EOF can drop the request before delivery, leaving only server-push frames. Use a
+  persistent client: connect, send, then read for a few seconds. A control probe proves nothing when the
+  transport is broken.
+- **Physical machines:** never connect to or write to one without explicit operator authorisation, and say
+  which device you used in the PR.
 
 ## Hard Rules
 
@@ -89,13 +115,16 @@ GitHub Issues on `decentespresso/decaid` is the canonical issue tracker. Use `gh
 
 **Triage labels** (used on `decentespresso/decaid`):
 
+New issues automatically receive `needs-triage` as an inbox label, regardless of whether they come from an issue form, a bot, or another creation path. When evaluating an issue, remove `needs-triage` and apply the appropriate reviewed state below. Do not treat `needs-triage` as implementation readiness.
+
 | Label | Meaning |
 |-------|---------|
-| `needs-triage` | Maintainer needs to evaluate this issue |
-| `needs-info` | Waiting on reporter for more information |
-| `ready-for-agent` | Fully specified, ready for an AFK agent |
-| `ready-for-human` | Requires human implementation |
-| `wontfix` | Will not be actioned |
+| `needs-triage` | New issue not yet evaluated by a maintainer |
+| `needs-info` | Reviewed; waiting on reporter for more information |
+| `needs-refinement` | Reviewed; product or engineering decisions are still needed |
+| `ready-for-agent` | Reviewed and fully specified, ready for an AFK agent |
+| `ready-for-human` | Reviewed; requires human implementation |
+| `wontfix` | Reviewed; will not be actioned (close as not planned when appropriate) |
 
 ## Deep References
 
@@ -111,7 +140,8 @@ GitHub Issues on `decentespresso/decaid` is the canonical issue tracker. Use `gh
 - Bundled plugin logic (not host API/permissions — that's `doc/Plugins.md`): `doc/AI_PLUGINS_NOTES.md`.
 - Full project docs: `doc/Api.md`, `doc/Skins.md`, `doc/Plugins.md`, `doc/Profiles.md`, `doc/DeviceManagement.md`, `doc/RELEASE.md`.
 - Contributing: `CONTRIBUTING.md`.
-- Dev-loop skill: `.agents/skills/decent-app/SKILL.md`.
+- API usage and runtime scenarios: `.agents/skills/decent-app/SKILL.md` (drive a running instance through REST/WebSocket). A code change that needs runtime verification uses both skills: `decent-dev` for the development loop, `decent-app` for the runtime procedure.
+- Dev-loop gotchas: `.agents/skills/decent-dev/SKILL.md` (gate, formatting policy, worktrees, tablet).
 - API specs: `assets/api/rest_v1.yml`, `assets/api/websocket_v1.yml`.
 - Archived design docs: `doc/plans/archive/` (the *why* behind shipped features).
 - Knowledge graph: `code-review-graph` MCP tools. Use `rg` or direct file reads for exact names, paths, and one-hop lookups. Use the graph for multi-hop impact analysis, callers-of-callers, affected flows, architectural exploration, and test reachability.

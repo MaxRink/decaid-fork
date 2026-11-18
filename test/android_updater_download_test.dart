@@ -5,8 +5,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:reaprime/src/services/account/decent_account_service.dart';
 import 'package:reaprime/src/services/android_updater.dart';
+import 'package:reaprime/src/services/github_credentials.dart';
 import 'package:reaprime/src/util/remote_error.dart';
+
+class _CredentialStore implements CredentialStore {
+  @override
+  Future<String?> read({required String key}) async => 'test-pat';
+
+  @override
+  Future<void> write({required String key, required String value}) async {}
+
+  @override
+  Future<void> delete({required String key}) async {}
+}
 
 void main() {
   group('AndroidUpdater.checkForUpdate', () {
@@ -257,7 +270,7 @@ void main() {
                 .having(
                   (e) => e.userMessage,
                   'userMessage',
-                  'The service is receiving too many requests. Try again later.',
+                  contains('temporarily unavailable until 12:00 UTC'),
                 ),
           ),
         );
@@ -272,7 +285,7 @@ void main() {
                 .having(
                   (e) => e.userMessage,
                   'userMessage',
-                  'The service is receiving too many requests. Try again later.',
+                  contains('temporarily unavailable until 12:00 UTC'),
                 ),
           ),
         );
@@ -290,31 +303,49 @@ void main() {
         expect(requests, 2);
       });
 
-      test('does not start a cooldown without a reset header', () async {
-        var calls = 0;
-        final noReset = AndroidUpdater(
-          owner: 'tadelv',
-          repo: 'reaprime',
-          now: () => clock,
-          httpClient: MockClient((_) async {
-            calls++;
-            return calls == 1
-                ? http.Response(
-                    'rate limited',
-                    403,
-                    headers: {'x-ratelimit-remaining': '0'},
-                  )
-                : http.Response('[]', 200);
-          }),
+      for (final reset in <String?>[null, 'malformed']) {
+        test(
+          'unknown reset $reset remains a mapped rate-limit error',
+          () async {
+            var calls = 0;
+            final noReset = AndroidUpdater(
+              owner: 'tadelv',
+              repo: 'reaprime',
+              now: () => clock,
+              httpClient: MockClient((_) async {
+                calls++;
+                return calls == 1
+                    ? http.Response(
+                        'rate limited',
+                        403,
+                        headers: {
+                          'x-ratelimit-remaining': '0',
+                          'x-ratelimit-reset': ?reset,
+                        },
+                      )
+                    : http.Response('[]', 200);
+              }),
+            );
+            addTearDown(noReset.dispose);
+            await expectLater(
+              noReset.checkForUpdate('0.7.14'),
+              throwsA(
+                isA<UpdateCheckException>()
+                    .having((e) => e.rateLimited, 'rateLimited', isTrue)
+                    .having((e) => e.resetAt, 'resetAt', isNull)
+                    .having((e) => e.statusCode, 'statusCode', 403)
+                    .having(
+                      (e) => e.userMessage,
+                      'userMessage',
+                      contains('temporarily unavailable'),
+                    ),
+              ),
+            );
+            expect(await noReset.checkForUpdate('0.7.14'), isNull);
+            expect(calls, 2);
+          },
         );
-
-        await expectLater(
-          noReset.checkForUpdate('0.7.14'),
-          throwsA(isA<UpdateCheckException>()),
-        );
-        expect(await noReset.checkForUpdate('0.7.14'), isNull);
-        expect(calls, 2);
-      });
+      }
     });
 
     test(
@@ -342,10 +373,11 @@ void main() {
               (e) => e.message,
               'message',
               allOf(
-                contains('User-Agent required'),
+                contains('HTTP 403'),
                 contains('remaining: 0'),
                 contains('reset time unavailable'),
-                isNot(contains('rate limit exceeded')),
+                isNot(contains('User-Agent required')),
+                isNot(contains('xxxxx')),
                 isNot(contains('\n')),
                 predicate<String>((message) => message.length < 500),
               ),
@@ -374,8 +406,9 @@ void main() {
               (e) => e.message,
               'message',
               allOf(
-                contains('403'),
-                contains('User-Agent required'),
+                contains('HTTP 403'),
+                isNot(contains('User-Agent required')),
+                isNot(contains('xxxxx')),
                 predicate<String>((message) => message.length < 500),
               ),
             ),
@@ -399,8 +432,37 @@ void main() {
           isA<UpdateCheckException>().having(
             (e) => e.message,
             'message',
-            'Failed to fetch releases: HTTP 404',
+            'GitHub request failed: HTTP 404',
           ),
+        ),
+      );
+    });
+
+    test('preserves user credential advice in update errors', () async {
+      final updater = AndroidUpdater(
+        owner: 'tadelv',
+        repo: 'reaprime',
+        credentials: GithubCredentialProvider(store: _CredentialStore()),
+        httpClient: MockClient(
+          (_) async => http.Response('private response payload', 401),
+        ),
+      );
+
+      await expectLater(
+        updater.checkForUpdate('0.7.14'),
+        throwsA(
+          isA<UpdateCheckException>()
+              .having((e) => e.credentialRejected, 'credentialRejected', isTrue)
+              .having(
+                (e) => e.userMessage,
+                'userMessage',
+                contains('Advanced Settings'),
+              )
+              .having(
+                (e) => e.message,
+                'message',
+                isNot(contains('private response payload')),
+              ),
         ),
       );
     });

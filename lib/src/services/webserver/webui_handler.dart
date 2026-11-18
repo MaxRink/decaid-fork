@@ -4,9 +4,7 @@ class WebUIHandler {
   final WebUIStorage _storage;
   final WebUIService _service;
 
-  WebUIHandler({required WebUIStorage storage, required WebUIService service})
-    : _storage = storage,
-      _service = service;
+  WebUIHandler({required this._storage, required this._service});
 
   void addRoutes(RouterPlus app) {
     app.get('/api/v1/webui/skins', _handleListSkins);
@@ -78,15 +76,13 @@ class WebUIHandler {
 
   Future<Response> _handleSetDefaultSkin(Request request) async {
     try {
-      final body =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      final body = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
       final skinId = body['skinId'] as String?;
 
       if (skinId == null || skinId.isEmpty) {
@@ -114,15 +110,13 @@ class WebUIHandler {
 
   Future<Response> _handleInstallFromGitHubRelease(Request request) async {
     try {
-      final body =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      final body = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
       final repo = body['repo'] as String?;
 
       if (repo == null || repo.isEmpty) {
@@ -157,15 +151,13 @@ class WebUIHandler {
 
   Future<Response> _handleInstallFromGitHubBranch(Request request) async {
     try {
-      final body =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      final body = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
       final repo = body['repo'] as String?;
 
       if (repo == null || repo.isEmpty) {
@@ -196,15 +188,13 @@ class WebUIHandler {
 
   Future<Response> _handleInstallFromUrl(Request request) async {
     try {
-      final body =
-          jsonDecode(
-                await readBoundedRequestBodyString(
-                  request,
-                  maxBytes: smallRequestBodyBytes,
-                  timeout: smallRequestBodyTimeout,
-                ),
-              )
-              as Map<String, dynamic>;
+      final body = jsonDecode(
+        await readBoundedRequestBodyString(
+          request,
+          maxBytes: smallRequestBodyBytes,
+          timeout: smallRequestBodyTimeout,
+        ),
+      ) as Map<String, dynamic>;
       final url = body['url'] as String?;
 
       if (url == null || url.isEmpty) {
@@ -252,8 +242,11 @@ class WebUIHandler {
 
   Future<Response> _handleUpdateSkins(Request request) async {
     try {
-      await _storage.updateAllSkins();
-      return jsonOk({'message': 'Skin update check completed'});
+      final report = await _storage.checkForSkinUpdates();
+      return jsonOk({
+        'message': 'Skin update check completed',
+        'results': report.results.map((r) => r.toJson()).toList(),
+      });
     } catch (e, st) {
       log.warning('Skin update check failed', e, st);
       return jsonError({

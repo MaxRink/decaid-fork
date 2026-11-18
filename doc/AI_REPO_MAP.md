@@ -25,6 +25,7 @@ Use this for unfamiliar or multi-subsystem tasks. For known files or exact symbo
 | Build, platform, CLI flags | `doc/AI_BUILD_NOTES.md` | `Makefile`, `pubspec.yaml` |
 | Crashes, error tracing | `doc/AI_DEBUG_NOTES.md` | `lib/src/services/crashlytics_error_filter.dart` |
 | Onboarding or settings UI | — | `lib/src/onboarding_feature/`, `lib/src/settings/`, `lib/src/launcher/` |
+| App startup readiness | `doc/DeviceManagement.md` | `lib/src/services/app_startup_coordinator.dart`, `lib/src/app.dart`, `lib/main.dart` |
 | Release process | `doc/RELEASE.md` | `.github/workflows/release.yml` |
 | Historical design rationale | — | `doc/plans/archive/` — search for the feature name |
 
@@ -52,7 +53,7 @@ flutter test                                  # All tests
 flutter test test/path/to/test.dart           # Specific file
 flutter test --name "test pattern"            # Specific test
 flutter analyze                               # Static analysis
-dart format lib/ test/                        # Format
+# Format changed Dart files: see AGENTS.md -> Verification step 1.
 ```
 
 API smoke test: `scripts/sb-dev.sh start` then `curl` / `websocat` per `.agents/skills/decent-app/verification.md`.
@@ -63,6 +64,6 @@ API smoke test: `scripts/sb-dev.sh start` then `curl` / `websocat` per `.agents/
 - `test/` test files — read only the ones relevant to the change.
 - `assets/` assets unrelated to API specs.
 - `ios/`, `android/`, `macos/`, `linux/`, `windows/` — platform-native project files. Only touch when adding platform capabilities.
-- `packages/dye2-plugin/` — DYE2 plugin source, **not built or bundled by Decaid**. The bundled copy is pinned and fetched from [decentespresso/dye2](https://github.com/decentespresso/dye2) releases via `scripts/fetch_dye2_plugin.sh` (see `doc/Plugins.md`). Do DYE2 compatibility work against that repo, not this in-tree copy.
+- `packages/dye2-plugin/` — DYE2 plugin source, **not built or bundled by Decaid**. The bundled copy is fetched at build time from the latest [decentespresso/dye2](https://github.com/decentespresso/dye2) release via `scripts/fetch_dye2_plugin.sh` (see `doc/Plugins.md`). Do DYE2 compatibility work against that repo, not this in-tree copy.
 - `assets/plugins/shot-upload.reaplugin/` — generated from the pinned [decentespresso/shot-upload](https://github.com/decentespresso/shot-upload) release by `scripts/fetch_shot_upload_plugin.sh`. Do shot-upload behavior work in that repository, not against the generated Decaid asset.
 - `assets/plugins/dcamp.reaplugin/` — generated from the pinned [decentespresso/decaid-dcamp-plugin](https://github.com/decentespresso/decaid-dcamp-plugin) release by `scripts/fetch_dcamp_plugin.sh`. Do dcamp behavior work in that repository, not against the generated Decaid asset.

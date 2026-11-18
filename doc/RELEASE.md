@@ -2,6 +2,38 @@
 
 This document describes how to create releases for Decaid.
 
+## 0.9.3 upgrade: extension-management protection becomes opt-in
+
+Decaid 0.9.2 gated plugin and skin management on an `extensions:manage` API
+token for every caller. 0.9.3 reverses that default: the management API is open
+again to any client that can reach the device, including other machines on the
+LAN such as Home Assistant and MCP clients, and the token gate now sits behind a
+native **Settings → Security → "Require authorization for extension
+management"** switch that ships **OFF** for new installations **and** for
+upgrades.
+
+The 0.9.3 release notes have to lead with this, in this order:
+
+1. **What changed.** Upgrading removes the always-on protection 0.9.2 shipped,
+   in both new and existing installations.
+2. **What it means while the switch is off.** Anyone who can reach the
+   management API on the device's network, or a plugin allowed to call it, can
+   install, modify, approve and remove extensions, approve permission
+   escalations and change extension settings. It is an explicit compatibility
+   tradeoff, not a security claim.
+3. **What to do.** Open Settings → Security, turn the switch on for a shared or
+   café device, and restrict network access to the device. The café hardening
+   and provisioning guide is
+   [github.com/decentespresso/decaid/issues/1192](https://github.com/decentespresso/decaid/issues/1192)
+   and is forthcoming.
+4. **What is separate.** The switch covers extension management only. Tokens
+   travel over plain HTTP on port 8080, so they are readable on a hostile LAN;
+   HTTPS is issue #925 and optional full REST/WS authentication is issue #1135.
+
+`fastlane/metadata/en-US/release_notes.txt` carries the same points for the App
+Store listing. The reference text is `doc/Api.md` ("Extension management
+authorization") and `doc/Plugins.md` ("Authorization").
+
 ## Creating a Release
 
 Decaid uses git tags to trigger automatic releases. When you push a tag, GitHub Actions will:
@@ -54,6 +86,19 @@ Get-FileHash decaid-windows-x64-<version>.zip -Algorithm SHA256
 
 The Windows build is unsigned, so a clean machine may show an unknown-publisher warning when `Decaid.exe` is first launched. There is no installer; the ZIP is portable. Decaid stores user data and logs under `%APPDATA%`, not in the extraction folder, so deleting the extracted folder does not remove them.
 
+### Dry-run validation before tagging
+
+`Create Release` also accepts `workflow_dispatch`, which builds every platform job and then stops: `create-release` and `publish-appcast` are guarded by `if: github.event_name == 'push'`, so a dispatch never creates a release, uploads assets to one, or touches the `gh-pages` appcast feed. This is the way to validate a change to the workflow itself, or a new action/runtime version, without cutting a tag.
+
+Dispatch it on the branch that contains the workflow change and pass an optional `version` label (default `0.0.0-dryrun`) used only in the artifact filenames:
+
+```bash
+gh workflow run "Create Release" --ref <branch> -f version=0.0.0-dryrun
+gh run watch "$(gh run list --workflow "Create Release" --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+The dry run exercises the build jobs, so it costs the same runner time as a real release. The tag push remains the only path that publishes.
+
 ### Step 1: Tag Your Release
 
 ```bash
@@ -81,6 +126,11 @@ git push origin v1.0.0-alpha.1
 1. Go to https://github.com/decentespresso/decaid/releases
 2. Your new release should appear with all platform artifacts attached
 3. Download and test the relevant artifacts
+4. On an Android or iOS device, run a bulk de1app import (a few hundred shots)
+   and watch for dropped frames. The import parses on the UI isolate; host
+   figures are in `test/import/de1app_parse_benchmark_test.dart`, but no device
+   measurement has been taken. If frames drop, the parse loop is what to move
+   to a worker isolate.
 
 ## Version Numbering
 
@@ -247,6 +297,17 @@ Tagged release artifacts use the same `decaid-<platform>` prefix without `-devel
 # Open Settings and verify version number
 ```
 
+### DE1 firmware validation scope (#1103)
+
+Release validation notes must distinguish the managed firmware no-replay policy
+from raw firmware writes, which may still reconnect and replay once after a BLE
+timeout. The #1103 Android BLE/ESP32 emulator checks used synthetic faults after
+successful real writes; physical DE1 firmware flashing and naturally lost
+acknowledgements remain unverified. Do not describe emulator results as proof of
+production bootloader safety. Physical DE1 checks require separate operator
+authorisation. See the [policy rationale, proposed raw-write follow-up and
+validation limits](plans/archive/1103-firmware-write-replay/README.md).
+
 ## Troubleshooting
 
 ### Release Failed to Build
@@ -287,6 +348,12 @@ The `build-ios` job in `.github/workflows/release.yml`:
 3. Uploads the signed IPA to TestFlight via the App Store Connect API
 
 The unsigned IPA is intended for self-signing and sideloading; it cannot be installed directly.
+
+### App Store Listing
+
+Listing text and screenshots live in `fastlane/` and are pushed with a manual
+`fastlane deliver` run; CI only ships builds to TestFlight. See
+`fastlane/README.md` for the commands, screenshot sizes, and API key setup.
 
 Required secrets: `APPLE_DISTRIBUTION_CERTIFICATE_P12`, `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE_B64`, `IOS_PROVISIONING_PROFILE_NAME`, `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_P8`, `TEAM_ID`.
 

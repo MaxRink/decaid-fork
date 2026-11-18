@@ -7,14 +7,11 @@ class SettingsHandler {
   final BatteryController? _batteryController;
 
   SettingsHandler({
-    required SettingsController controller,
+    required this._controller,
     required WebUIService service,
-    required WebUIStorage webUIStorage,
-    BatteryController? batteryController,
-  }) : _controller = controller,
-       _webUIService = service,
-       _webUIStorage = webUIStorage,
-       _batteryController = batteryController;
+    required this._webUIStorage,
+    this._batteryController,
+  }) : _webUIService = service;
 
   void addRoutes(RouterPlus app) {
     app.get('/api/v1/settings', () async {
@@ -73,6 +70,28 @@ class SettingsHandler {
         maxBytes: largeRequestBodyBytes,
       );
       Map<String, dynamic> json = jsonDecode(payload);
+      final changesSkin =
+          json.containsKey('webUiPath') ||
+          (json.containsKey('defaultSkinId') &&
+              json['defaultSkinId'] != _controller.defaultSkinId);
+      final enablesAutomaticUpdates =
+          json['automaticUpdateCheck'] == true &&
+          !_controller.automaticUpdateCheck;
+      if (changesSkin || enablesAutomaticUpdates) {
+        final originRefusal = requireTrustedBrowserOrigin(
+          request,
+          action: 'POST /api/v1/settings extension settings',
+        );
+        if (originRefusal != null) return originRefusal;
+        final denial = await requireExtensionManagement(
+          request,
+          action: 'POST /api/v1/settings extension settings',
+        );
+        if (denial != null) return denial;
+      }
+      final freezeUntrustedExtensionSettings = isUntrustedBrowserOrigin(
+        request,
+      );
       if (json.containsKey('gatewayMode')) {
         final GatewayMode? gatewayMode = GatewayModeFromString.fromString(
           json['gatewayMode'],
@@ -194,7 +213,9 @@ class SettingsHandler {
           });
         }
       }
-      if (json.containsKey('defaultSkinId')) {
+      if (json.containsKey('defaultSkinId') &&
+          !freezeUntrustedExtensionSettings &&
+          await mayManageExtensions(request)) {
         final value = json['defaultSkinId'];
         if (value is String) {
           try {
@@ -211,7 +232,11 @@ class SettingsHandler {
       if (json.containsKey('automaticUpdateCheck')) {
         final value = json['automaticUpdateCheck'];
         if (value is bool) {
-          await _controller.setAutomaticUpdateCheck(value);
+          if (!value ||
+              (!freezeUntrustedExtensionSettings &&
+                  await mayManageExtensions(request))) {
+            await _controller.setAutomaticUpdateCheck(value);
+          }
         } else {
           return jsonBadRequest({
             'message': 'automaticUpdateCheck must be a boolean',

@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:reaprime/src/models/errors.dart';
 import 'package:reaprime/src/services/telemetry/telemetry_forwarder_filter.dart';
 import 'package:reaprime/src/util/remote_error.dart';
+import 'package:reaprime/src/util/user_facing_exception.dart';
 
 LogRecord _record(
   Level level,
@@ -264,6 +265,35 @@ void main() {
         );
         expect(shouldForwardToTelemetry(record), isTrue);
       });
+    });
+
+    group('handled input failures', () {
+      test('DataManagement UserFacingFormatException is dropped without message matching', () {
+        final record = _record(
+          Level.SEVERE,
+          'DataManagement',
+          'any handled input diagnostic',
+          const UserFacingFormatException('invalid export shape'),
+        );
+        expect(shouldForwardToTelemetry(record), isFalse);
+      });
+
+      for (final logger in [
+        'DataManagement',
+        'BleTransport',
+        'ShotsHandler',
+        'SomeParser',
+      ]) {
+        test('FormatException from $logger is kept', () {
+          final record = _record(
+            Level.SEVERE,
+            logger,
+            'Legacy shot import failed',
+            const FormatException('unexpected internal data'),
+          );
+          expect(shouldForwardToTelemetry(record), isTrue);
+        });
+      }
     });
 
     group('keeps genuinely-unexpected exceptions', () {

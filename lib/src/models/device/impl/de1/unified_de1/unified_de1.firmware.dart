@@ -9,15 +9,54 @@ extension UnifiedDe1Firmware on UnifiedDe1 {
     _FirmwareCancellationToken cancelToken,
   ) async {
     _throwIfFirmwareCancelled(cancelToken);
-    await requestState(MachineState.sleeping);
+    await _runFirmwareStage('sleep', () => requestState(MachineState.sleeping));
     _throwIfFirmwareCancelled(cancelToken);
-    await beforeFirmwareUpload();
+    await _runFirmwareStage('preflight', beforeFirmwareUpload);
     _throwIfFirmwareCancelled(cancelToken);
 
+    final gateStopwatch = Stopwatch()..start();
+    _log.fine('firmware stage=firmware-gate waiting elapsed=0ms');
     await _firmwareMmrGate.runFirmwareExclusive(() async {
+      _log.fine(
+        'firmware stage=firmware-gate acquired '
+        'elapsed=${gateStopwatch.elapsedMilliseconds}ms',
+      );
       _throwIfFirmwareCancelled(cancelToken);
       await _updateFirmwareExclusive(fwImage, onProgress, cancelToken);
     });
+  }
+
+  Future<void> _runFirmwareStage(
+    String stage,
+    Future<void> Function() operation,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    _log.fine('firmware stage=$stage start elapsed=0ms');
+    try {
+      final result = await operation();
+      _log.fine(
+        'firmware stage=$stage complete '
+        'elapsed=${stopwatch.elapsedMilliseconds}ms',
+      );
+      return result;
+    } catch (error, stackTrace) {
+      if (error is FirmwareUpdateCancelledException) rethrow;
+      _log.warning(
+        'firmware stage=$stage failed '
+        'elapsed=${stopwatch.elapsedMilliseconds}ms cause=$error',
+        error,
+        stackTrace,
+      );
+      if (error is FirmwareUpdateStageException) rethrow;
+      Error.throwWithStackTrace(
+        FirmwareUpdateStageException(
+          stage: stage,
+          cause: error,
+          stackTrace: stackTrace,
+        ),
+        stackTrace,
+      );
+    }
   }
 
   Future<void> _updateFirmwareExclusive(
@@ -107,6 +146,7 @@ extension UnifiedDe1Firmware on UnifiedDe1 {
         firmwareToMap: 1,
         error: Uint8List.fromList([0xff, 0xff, 0xff]),
       ).asData().buffer.asUint8List(),
+      retryOnTimeout: false,
       beforeDispatch: () {
         _throwIfFirmwareCancelled(cancelToken);
         onResponseArmed(
@@ -192,9 +232,8 @@ extension UnifiedDe1Firmware on UnifiedDe1 {
 
   bool _hasFirmwareError(FWMapRequestData response, List<int> expected) {
     return response.error.length == expected.length &&
-        Iterable<int>.generate(
-          expected.length,
-        ).every((index) => response.error[index] == expected[index]);
+        Iterable<int>.generate(expected.length)
+            .every((index) => response.error[index] == expected[index]);
   }
 
   void _throwIfFirmwareCancelled(_FirmwareCancellationToken token) {
@@ -236,7 +275,11 @@ extension UnifiedDe1Firmware on UnifiedDe1 {
       data[3] = address[2];
       data.setRange(4, 4 + chunkLength, list, offset);
 
-      await _transport.writeWithResponse(Endpoint.writeToMMR, data);
+      await _transport.writeWithResponse(
+        Endpoint.writeToMMR,
+        data,
+        retryOnTimeout: false,
+      );
       _throwIfFirmwareCancelled(cancelToken);
       chunkNum++;
       if (batchPause > Duration.zero && chunkNum % batchSize == 0) {

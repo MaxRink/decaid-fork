@@ -5,12 +5,14 @@ import 'package:logging/logging.dart';
 import 'package:reaprime/build_info.dart';
 import 'package:reaprime/src/controllers/presence_controller.dart';
 import 'package:reaprime/src/services/android_updater.dart';
+import 'package:reaprime/src/services/github_credentials.dart';
 import 'package:reaprime/src/services/macos_updater.dart';
 import 'package:reaprime/src/services/update_check_service.dart';
 import 'package:reaprime/src/settings/battery_charging_settings_page.dart';
 import 'package:reaprime/src/settings/common.dart';
 import 'package:reaprime/src/settings/device_management_page.dart';
 import 'package:reaprime/src/settings/presence_settings_page.dart';
+import 'package:reaprime/src/settings/security_page.dart';
 import 'package:reaprime/src/settings/charging_mode.dart';
 import 'package:reaprime/src/settings/update_dialog.dart';
 import 'package:reaprime/src/webui_support/webui_storage.dart';
@@ -28,6 +30,7 @@ class SettingsView extends StatelessWidget {
     this.macosUpdater,
     required this.presenceController,
     this.webUIStorage,
+    this.githubCredentials,
   });
 
   static const routeName = '/settings';
@@ -37,6 +40,7 @@ class SettingsView extends StatelessWidget {
   final UpdateCheckService? updateCheckService;
   final MacOSUpdater? macosUpdater;
   final WebUIStorage? webUIStorage;
+  final GithubCredentialProvider? githubCredentials;
 
   @override
   Widget build(BuildContext context) {
@@ -55,9 +59,9 @@ class SettingsView extends StatelessWidget {
                 icon: Icons.devices_outlined,
                 label: 'Devices',
                 trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () => Navigator.of(
-                  context,
-                ).pushNamed(DeviceManagementPage.routeName),
+                onTap: () =>
+                    Navigator.of(context)
+                        .pushNamed(DeviceManagementPage.routeName),
               ),
               const SettingsDivider(),
               SettingsTile(
@@ -144,9 +148,9 @@ class SettingsView extends StatelessWidget {
                             updateCheckService?.availableUpdate?.version ?? '',
                             style: const TextStyle(fontSize: 12),
                           ),
-                          backgroundColor: Theme.of(
-                            context,
-                          ).colorScheme.primary,
+                          backgroundColor: Theme.of(context)
+                              .colorScheme
+                              .primary,
                         )
                       : null,
                   onTap: () => _checkForUpdates(context),
@@ -201,6 +205,19 @@ class SettingsView extends StatelessWidget {
                     'Prevent the tablet screen from turning off while the app is running',
                   ),
                 ),
+              ),
+
+              const SettingsSectionHeader('Security'),
+              SettingsTile(
+                icon: Icons.shield_outlined,
+                label: 'Security',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SecurityPage(controller: controller),
+                    ),
+                  );
+                },
               ),
 
               const SettingsSectionHeader('About'),
@@ -389,9 +406,8 @@ class SettingsView extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'License',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
@@ -483,20 +499,19 @@ class SettingsView extends StatelessWidget {
 
       if (updateInfo != null) {
         if (Platform.isAndroid) {
-          final updater = AndroidUpdater(owner: 'tadelv', repo: 'reaprime');
+          final updater = AndroidUpdater(
+            owner: 'tadelv',
+            repo: 'reaprime',
+            credentials: githubCredentials,
+          );
           final releaseUrl = updateCheckService?.getReleaseUrl(updateInfo);
-          await showDialog(
-            context: context,
-            builder: (context) => UpdateDialog(
-              updateInfo: updateInfo,
-              currentVersion: BuildInfo.version,
-              onViewReleaseNotes: () {
-                if (releaseUrl != null) launchUrl(Uri.parse(releaseUrl));
-              },
-              onDownload: (info, onProgress) =>
-                  updater.downloadUpdate(info, onProgress: onProgress),
-              onInstall: (path) => updater.installUpdate(path),
-            ),
+          await showAndroidUpdateDialog(
+            context,
+            updateInfo: updateInfo,
+            updater: updater,
+            onViewReleaseNotes: () {
+              if (releaseUrl != null) launchUrl(Uri.parse(releaseUrl));
+            },
           );
         } else {
           final releaseUrl = updateCheckService?.getReleaseUrl(updateInfo);
@@ -587,5 +602,29 @@ class SettingsView extends StatelessWidget {
         ),
       );
     }
+  }
+}
+
+Future<void> showAndroidUpdateDialog(
+  BuildContext context, {
+  required UpdateInfo updateInfo,
+  required AndroidUpdater updater,
+  required VoidCallback onViewReleaseNotes,
+}) async {
+  try {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UpdateDialog(
+        updateInfo: updateInfo,
+        currentVersion: BuildInfo.version,
+        onViewReleaseNotes: onViewReleaseNotes,
+        onDownload: (info, onProgress) =>
+            updater.downloadUpdate(info, onProgress: onProgress),
+        onInstall: updater.installUpdate,
+      ),
+    );
+  } finally {
+    updater.dispose();
   }
 }

@@ -37,6 +37,77 @@ The single BLE transport is `UniversalBleTransport` in `lib/src/services/ble/uni
 
 `UnifiedDe1Transport` wraps `UniversalBleTransport` and adds MMR read/write on top of raw characteristic I/O. It provides `rawData` stream, `readMmr()`, `writeMmr()`, and typed connection guards (`DeviceNotConnectedException.machine()` on read/write when disconnected).
 
+## MMR read architecture
+
+Consecutive MMR settings words can share one request, reducing transport round
+trips without caching live settings. Address contiguity alone is insufficient:
+validate every proposed group against single-word reads on real hardware before
+coalescing it. Verified groups and firmware-specific exceptions live in
+[`device-notes/de1.md`](device-notes/de1.md#multi-word-mmr-reads).
+
+`UnifiedDe1MMR._mmrReadWords` uses the existing raw read path, with one to four
+words per request. Each response word is decoded as signed little-endian int32
+at `4 + 4 * wordIndex`, then given its field's `MMRItem.readScale` or boolean
+conversion. Missing words throw rather than becoming zero/default values;
+trailing frame bytes are ignored. Settings groups assert register contiguity.
+Single-word getters and writes retain their existing decoding and framing.
+
+`_firmwareMmrGate` serialises MMR operations across reads and writes: only one
+operation owns the gate, including its response wait, retries and retry-settle
+delay. Address-only response correlation cannot distinguish simultaneous
+single-word and multi-word reads at the same start address; a padded single-word
+reply could silently supply zero for another caller's second word. Response
+header byte 0 is not a reliable word count (see the device notes), so length
+matching is not a substitute for serialisation. Acquire the gate only at the raw
+read/write boundary; permitted bodies must not nest MMR operations.
+
+Firmware updates require exclusive ownership of the same gate. An active MMR
+operation finishes before waiting firmware starts; waiting firmware takes
+priority even over already queued MMR work. Once firmware owners finish or fail,
+queued MMR work resumes one operation at a time in FIFO order. This preserves
+firmware exclusivity without discarding settings requests.
+
+Managed firmware diagnostics log elapsed stage boundaries from queue admission
+through controller initialization, `onStart`, sleep, preflight and gate
+acquisition. The governor attributes a firmware-only initialization timeout at
+its readiness wait (`stage: initialization`) and pre-start resolution or
+connection-generation failure at the controller boundary (`stage: controller`);
+causes and original stacks are retained. Sleep, preflight, erase, upload and
+verification failures retain their original causes and messages and are not
+labelled as gate-acquisition failures. Typed cancellation is a single terminal
+error without failure-stage logging. HTTP 200 admits the stream;
+clients must consume its terminal `done` or `error` event. Transport-level hex
+payload logging is suppressed for MMR writes because firmware image chunks share
+that endpoint; the MMR layer still logs its own payloads at fine level.
+
+Managed firmware map commands and image chunks explicitly disable transparent
+BLE timeout recovery on their dispatches: an accepted write with an uncertain
+acknowledgement must fail rather than be replayed. Both transport write APIs
+otherwise permit at most one reconnect-and-retry per call. Ordinary settings
+writes to the shared MMR endpoint retain that bounded recovery; the endpoint
+alone does not identify firmware traffic. Serial dispatch is unchanged.
+
+Raw writes in `unified_de1.raw.dart` use the default retry policy, including raw
+firmware-map requests and image writes. They may reconnect and replay once after
+a BLE timeout; the managed firmware no-replay guarantee does not cover them.
+Raw firmware dispatch safety needs a separately scoped issue that preserves
+ordinary settings recovery on the shared `writeToMMR` endpoint. See the
+[policy rationale and validation limits](plans/archive/1103-firmware-write-replay/README.md).
+
+The HTTP handlers select DE1's verified coalesced groups and Bengle's individually
+validated groups; the steam-purge/USB group stays sequential. Dart extension
+dispatch is static, so the `De1SettingsSnapshots` extension remains the sequential
+composition of individual getters for simulated, replay and interface-only
+devices. Device-specific validation evidence lives in `doc/device-notes/`.
+Serial DE1 devices use the same coalesced path and shared MMR framing; synthetic
+serial transport coverage is not physical serial validation. Advanced snapshots
+contain only the MMR fields; heater voltage and refill-kit setting retain their
+existing local-state handling.
+
+The decisions, measurements and verification limits for settings coalescing are
+recorded in
+[`plans/archive/1037-mmr-read-coalescing/README.md`](plans/archive/1037-mmr-read-coalescing/README.md).
+
 ## Terminal Lifecycle Teardown
 
 `AppLifecycleObserver` treats `detached` and `didRequestAppExit()` as best-effort terminal events. It cancels its state subscriptions, awaits `ConnectionManager.shutdown()`, then disposes the plugin loader before the app-log upload service. Shutdown rejects new connection work, stops discovery and recovery sources, releases queued requests, waits for in-flight work, then disconnects the machine and scale in order while isolating cleanup failures. `paused` and `hidden` preserve active connections.
@@ -149,6 +220,22 @@ with pending ambiguity, scale recovery is deferred to avoid racing with
 the user's choice. Scales powered off while the machine is sleeping are
 skipped to respect the radio-disconnect power mode. On Android, uses a
 filtered scan to bypass background throttling.
+
+With a preferred scale configured, scale-only recovery passes only the matching
+candidate to scale policy, while preserving the full inventory and scan report.
+Only the first matching candidate is passed; duplicate objects with the same
+preferred ID must not become fallback picker alternatives after a failed connect.
+An absent or failed preferred scale therefore retains the existing bounded
+retries instead of opening a picker for an alternative. In the #1078 controlled
+USB-loss test, that automatic picker cancelled retries and later blocked wake
+recovery even after the USB HDS returned. This rule also covers adapter recovery's
+scale-only path; explicit scans and no-preference selection are unchanged.
+
+This is intentionally scoped to scale-only recovery. Full automatic startup and
+machine-recovery scans retain their existing scale-picker policy, which can still
+pause preferred-scale retries when only an alternative is discovered. Changing
+that policy needs a separate decision and combined machine/scale recovery tests;
+the #1078 controlled USB-loss fix does not establish that broader path as fixed.
 
 ### Phase lifecycle
 
